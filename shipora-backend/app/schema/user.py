@@ -8,8 +8,8 @@ class AbstractUserDataModel(BaseModel):
 
     uid: uuid.UUID
     email: str
-    firstname: str
-    lastname: str
+    fullname: str
+    phone: str
     role: str
     verified: bool
     status: str
@@ -24,6 +24,7 @@ class UserDataModel(BaseModel):
     uid: uuid.UUID
     email: str
     fullname: str
+    phone: str
     role: str
     verified: bool
     status: str

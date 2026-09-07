@@ -31,6 +31,9 @@ class User(SQLModel, table=True):
         nullable=False,
         index=True,
     ))
+    phone_number: str = Field(
+        sa_column=Column(pg.VARCHAR, unique=True, nullable=True, index=True)
+    )
     fullname: str = Field(sa_column=Column(
         pg.VARCHAR,
         unique=False,
