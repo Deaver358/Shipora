@@ -3,6 +3,7 @@ import { Link, useNavigate } from "react-router-dom";
 import AuthStatusModal from "../components/AuthStatusModal";
 import "../index.css";
 import logo from "../assets/shipora-logo.jpeg";
+import { api } from "../interceptors/api";
 
 function ForgotPassword() {
   const navigate = useNavigate();
@@ -16,7 +17,7 @@ function ForgotPassword() {
     email: "",
   });
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     if (!email.trim()) {
@@ -24,6 +25,27 @@ function ForgotPassword() {
     }
 
     setLoading(true);
+
+    try {
+        const response = await api.post(
+            `auth/reset_password/${email}`
+        );
+
+        console.log(response.data);
+
+        // Success
+        // show success message / move to verification screen
+    } catch (error) {
+      console.error(
+            "Password reset error:",
+            error.response?.data || error.message
+        );
+
+        // Show error to user
+    } finally {
+        // Runs on both success and failure
+        setLoading(false);
+    }
 
     /*
      * Frontend demonstration only.
@@ -126,6 +148,7 @@ function ForgotPassword() {
 
           <button
             type="submit"
+            onClick={handleSubmit}
             className="auth-primary-button"
             disabled={loading}
           >

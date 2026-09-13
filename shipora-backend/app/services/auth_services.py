@@ -31,20 +31,33 @@ class AuthService:
 
 
     async def create_user(self, user_data: dict, session: AsyncSession):
-        existing_user = self.get_user(email=user_data['email'], session=session)
+        existing_user = await self.get_user(email=user_data['email'], session=session)
 
-        if existing_user == None:
+        if existing_user != None:
             return None
 
         try:
             user_data['password'] = hash_password(user_data['password'])
             new_user = User(**user_data)
             session.add(new_user)
-            session.commit()
-            session.refresh(new_user)
+            await session.commit()
+            await session.refresh(new_user)
 
             return AbstractUserDataModel.model_validate(new_user)
 
+        except Exception as e:
+            await session.rollback()
+            raise e
+        
+
+    async def update_user_info(self, user: User, info: dict, session: AsyncSession):
+        try:
+            for k, v in info.items():
+                setattr(user, k, v)
+            await session.commit()
+            await session.refresh(user)
+            return {"message": "Updated successfully"}
+        
         except Exception as e:
             await session.rollback()
             raise e

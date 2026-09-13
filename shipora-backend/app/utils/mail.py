@@ -1,5 +1,5 @@
 from fastapi_mail import FastMail, MessageSchema, MessageType, ConnectionConfig
-from app.config import settings
+from .config import settings
 from typing import List
 from .helpers import get_html_email, EmailTypes
 from .path import template_path
@@ -38,5 +38,22 @@ async def send_email_verification_email(users_email: str, username: str, verific
         recipients=[users_email],
         subject=email_verification_subject,
         body=email_verification_html,
+    )
+    await mail.send_message(message=message)
+
+async def send_password_reset_email(
+    users_email: str, username: str, verification_link: str
+):
+    password_reset_subject = "Reset Your Housify Password"
+    password_reset_html = await asyncio.to_thread(
+        get_html_email,
+        email_types=EmailTypes.password,
+        username=username,
+        verification_link=verification_link,
+    )
+    message = await create_message(
+        recipients=[users_email],
+        subject=password_reset_subject,
+        body=password_reset_html,
     )
     await mail.send_message(message=message)

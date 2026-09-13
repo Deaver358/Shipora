@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { supabase } from "../supabaseClient";
+import { api } from "../interceptors/api";
 import AuthStatusModal from "../components/AuthStatusModal";
 import "../index.css";
 import logo from "../assets/shipora-logo.jpeg";
@@ -27,17 +27,19 @@ function Login() {
     setLoading(true);
 
     try {
+      const loginData = {
+        email: email,
+        password: password,
+      }
       const { data, error: loginError } =
-        await supabase.auth.signInWithPassword({
-          email: email.trim(),
-          password,
-        });
+        await api.post(`auth/sign_in/`, loginData)
+        console.log(data);
 
       if (loginError) {
         throw loginError;
       }
 
-      if (!data.session) {
+      if (!data || !data.user_uid) {
         throw new Error(
           "Your account could not be signed in. Please verify your email first."
         );

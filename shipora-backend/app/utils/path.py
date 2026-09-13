@@ -1,7 +1,8 @@
 from pathlib import Path
-from .config import BASE_DIR
 
-v1_path = Path(BASE_DIR,"shipora-backend","app")
+BASE_DIR = Path(__file__).resolve().parent.parent.parent
+
+v1_path = Path(BASE_DIR,"app")
 template_path = Path(v1_path, "templates")
 static_files_path = Path(v1_path, "static")
 email_verification_path = Path(template_path, "email_verification.html")

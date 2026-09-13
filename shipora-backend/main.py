@@ -4,7 +4,7 @@ from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from app.core.session_config import engine
 from sqlmodel import SQLModel
 from contextlib import asynccontextmanager
-from .middleware_config import register_sessionMiddleware
+from middleware_config import register_sessionMiddleware
 from app.utils.path import static_files_path
 from app.routes.auth_routers import router as auth_router
 

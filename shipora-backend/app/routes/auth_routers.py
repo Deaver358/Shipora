@@ -8,10 +8,15 @@ from app.schema.auth_schema import SignUpModel, LoginModel
 from app.schema.user import UserDataModel
 from app.services.auth_services import AuthService
 from app.utils.validators import create_url_safe_token, create_access_token, create_refresh_token
-from app.utils.mail import send_email_verification_email
+from app.utils.mail import send_email_verification_email, send_password_reset_email
 from app.utils.hash_password import verify_hash
 from app.utils.path import template_path
 from fastapi.templating import Jinja2Templates
+import asyncio
+from app.utils.google import oauth
+from app.utils.hash_password import hash_password
+from app.utils.validators import decode_url_safe_token
+from app.utils.errors import UserNotFound, InvalidToken
 from app.utils.redis import store_access_token, store_refresh_token
 
 router = APIRouter()
@@ -72,18 +77,23 @@ async def refresh_access_token(
     
     return response
 
-@router.get("/sign_up")
+@router.post("/sign_up")
 async def create_account(bg_tasks: BackgroundTasks, request: Request, account_details: SignUpModel, session: AsyncSession = Depends(session)):
     user_data = account_details.model_dump()
     create_user = await auth_service.create_user(user_data, session)
 
+    if create_user is None:
+        raise HTTPException(
+            detail="User already exists",
+            status_code=status.HTTP_409_CONFLICT
+        )
     user_email = create_user.email
     token_data = {'email': user_email}
     username = create_user.fullname
     token = create_url_safe_token(token_data)
     verification_link = str(request.url_for("email_verification", token=token))
-
-    bg_tasks.add(
+    print(f"{create_user}")
+    bg_tasks.add_task(
         send_email_verification_email,
         users_email=user_email,
         username=username,
@@ -98,8 +108,8 @@ async def create_account(bg_tasks: BackgroundTasks, request: Request, account_de
     )
 
 
-@router.post("/sign_in/{remember_me}")
-async def log_in(remember_me: bool, login_data: LoginModel, session: AsyncSession = Depends(session)):
+@router.post("/sign_in")
+async def log_in(login_data: LoginModel, session: AsyncSession = Depends(session)):
     email = login_data.email
     password = login_data.password
 
@@ -128,7 +138,7 @@ async def log_in(remember_me: bool, login_data: LoginModel, session: AsyncSessio
     await store_access_token(user_uid=jti, value=apayload)
     await store_refresh_token(user_uid=jti, value=rpayload)
 
-    max_age = 60 * 60 * 24 * 30 if remember_me else 60 * 60 * 24
+    max_age = 60 * 60 * 24 * 30
 
     response = JSONResponse(
         content={
@@ -240,22 +250,22 @@ async def login_with_outlook():
 async def verify_account(
     request: Request, token: str, session: AsyncSession = Depends(session)
 ):
-    token_data = await asyncio.to_thread(decode_url_safeToken, token=token)
+    token_data = await asyncio.to_thread(decode_url_safe_token, token=token)
     if token_data is None:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,
             detail={"message": "Token is Invalid"},
         )
     email = token_data["email"]
-    user = await auth_service.get_email_user(email=email, session=session)
+    user = await auth_service.get_user(email=email, session=session)
     
-    if not user:
+    if user == None:
         raise UserNotFound()
     
     await auth_service.update_user_info(
-        user=user, info={"is_verified": True}, session=session
+        user=user, info={"account_verified": True}, session=session
     )
-    login_link = str("http://localhost:5173/sign-in") #link for sign in page
+    login_link = str("http://localhost:5173/login") #link for sign in page
     return template.TemplateResponse(
         request=request,
         name="email_verified.html",
@@ -292,14 +302,14 @@ async def resend_verify(
     )
 
 
-@router.post("/reset_password")
+@router.post("/reset_password/{email}")
 async def reset_user_password(
     request: Request,
     bg: BackgroundTasks,
     email: str,
     session: AsyncSession = Depends(session),
 ):
-    user = await auth_service.get_email_user(email=email, session=session)
+    user = await auth_service.get_user(email=email, session=session)
     if user is None:
         raise HTTPException(
             status_code=404, detail="User not found try signing up"
@@ -321,17 +331,17 @@ async def reset_user_password(
 async def password_reset_form(
     request: Request, token: str, session: AsyncSession = Depends(session)
 ):
-    token_data = await asyncio.to_thread(decode_url_safeToken, token=token)
+    token_data = await asyncio.to_thread(decode_url_safe_token, token=token)
     if token_data is None:
         raise HTTPException(status_code=403, detail={"message": "Invalid Token"})
 
     email = token_data["email"]
-    user = await auth_service.get_email_user(email=email, session=session)
+    user = await auth_service.get_user(email=email, session=session)
 
     if user is None:
         raise UserNotFound()
 
-    home_link = str(request.url_for("swagger_ui_html"))
+    home_link = str("localhost:5173/login")
     form_link = f"http://127.0.0.1:8000/api/v1.0/auth/password_reset?token={token}"  # Reason i did this is because url_for() was giving me a no routes found with name error so i just hardcoded it
     return template.TemplateResponse(
         request=request,
@@ -352,18 +362,18 @@ async def verify_password_reset(
     new_password=Form(...),
     confirm_password: str = Form(...),
 ):
-    token_data = await asyncio.to_thread(decode_url_safeToken, token=token)
+    token_data = await asyncio.to_thread(decode_url_safe_token, token=token)
     if token_data is None:
         raise HTTPException(status_code=403, detail={"message": "Invalid Token"})
     email = token_data["email"]
 
-    user = await auth_service.get_email_user(email=email, session=session)
+    user = await auth_service.get_user(email=email, session=session)
     new_password_hash = hash_password(new_password)
 
     await auth_service.update_user_info(
-        user=user, info={"hashed_password": new_password_hash}, session=session
+        user=user, info={"password": new_password_hash}, session=session
     )
-    home_link = str("http://localhost:5173/sign-in")
+    home_link = str("http://localhost:5173/login")
 
     return template.TemplateResponse(
         request=request,

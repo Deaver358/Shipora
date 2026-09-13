@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
-import { supabase } from "../supabaseClient";
+import { api } from "../interceptors/api";
 import AuthStatusModal from "../components/AuthStatusModal";
 import "../index.css";
 import logo from "../assets/shipora-logo.jpeg";
@@ -75,22 +75,32 @@ function Signup() {
 
       const redirectUrl = `${window.location.origin}/`;
 
+      const signUpData = {
+        email: formData.email,
+        fullname: formData.fullName,
+        password: formData.password,
+        phone: formData.phone,
+        terms_accepted: true,
+        terms_version: "1.0",
+      };
+
       const { data, error: signupError } =
-        await supabase.auth.signUp({
-          email,
-          password: formData.password,
+        await api.post(`auth/sign_up`, signUpData); 
+        // await supabase.auth.signUp({
+        //   email,
+        //   password: formData.password,
 
-          options: {
-            emailRedirectTo: redirectUrl,
+        //   options: {
+        //     emailRedirectTo: redirectUrl,
 
-            data: {
-              full_name: formData.fullName.trim(),
-              phone: formData.phone.trim(),
-              terms_accepted: true,
-              terms_version: "1.0",
-            },
-          },
-        });
+        //     data: {
+        //       full_name: formData.fullName.trim(),
+        //       phone: formData.phone.trim(),
+        //       terms_accepted: true,
+        //       terms_version: "1.0",
+        //     },
+        //   },
+        // });
 
       if (signupError) {
         throw signupError;

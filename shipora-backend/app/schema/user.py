@@ -2,6 +2,7 @@ from pydantic import BaseModel, ConfigDict
 import uuid
 from datetime import datetime
 from typing import List
+from ..models.user_model import UserRole
 
 
 class AbstractUserDataModel(BaseModel):
@@ -10,8 +11,8 @@ class AbstractUserDataModel(BaseModel):
     email: str
     fullname: str
     phone: str
-    role: str
-    verified: bool
+    role: UserRole
+    account_verified: bool
     status: str
     created_at: datetime
 
@@ -25,9 +26,12 @@ class UserDataModel(BaseModel):
     email: str
     fullname: str
     phone: str
-    role: str
+    role: UserRole
+    account_verified: bool
     verified: bool
     status: str
+    terms_accepted: bool
+    terms_version: str
     created_at: datetime
     updated_at: datetime
 

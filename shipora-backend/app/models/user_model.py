@@ -31,7 +31,7 @@ class User(SQLModel, table=True):
         nullable=False,
         index=True,
     ))
-    phone_number: str = Field(
+    phone: str = Field(
         sa_column=Column(pg.VARCHAR, unique=True, nullable=True, index=True)
     )
     fullname: str = Field(sa_column=Column(
@@ -44,19 +44,44 @@ class User(SQLModel, table=True):
         pg.VARCHAR,
         nullable=True
     ))
-    role: UserRole = Field(sa_column=Column(
-        pg.ENUM(UserRole, name="userrole"),
-        default=UserRole.USER
-    ))
-    acccount_verified: bool = Field(sa_column=Column(
+    role: UserRole = Field(
+        default=UserRole.USER,
+        sa_column=Column(
+            pg.ENUM(UserRole, name="userrole"),
+            nullable=False,
+            server_default=UserRole.USER.value,
+        ),
+    )
+    account_verified: bool = Field(
+        default=False,
+        sa_column=Column(
+            pg.BOOLEAN,
+            nullable=False,
+            default=False,
+        ),
+    )
+    verified: bool = Field(
+        default=False,
+        sa_column=Column(
+            pg.BOOLEAN,
+            nullable=False,
+            default=False,
+        ),
+    )
+
+    status: str = Field(
+        default="active",
+        sa_column=Column(
+            String(255),
+            nullable=False,
+            default="active",
+        ),
+    )
+    terms_accepted: bool = Field(sa_column=Column(
         pg.BOOLEAN,
         default=False
     ))
-    status: str = Field(sa_column=Column(
-        String(255),
-        nullable=False,
-        default="active"
-    ))
+    terms_version: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(
         pg.TIMESTAMP(timezone=True)
     ))

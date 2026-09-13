@@ -20,7 +20,7 @@ def get_html_email(email_types: EmailTypes, username: str, verification_link: st
             html_text.replace("{{first_name}}", username).replace(
                 "{{verification_link}}", verification_link
             )
-            if email_types == EmailTypes.email_types
+            if email_types == EmailTypes.email
             else html_text.replace("{{first_name}}", username).replace(
                 "{{reset_link}}", verification_link
             )

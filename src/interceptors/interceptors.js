@@ -1,13 +1,13 @@
 import { api } from "./api";
 import { clearAccessToken, getAccessToken, setAccessToken } from "../dep/token";
-import axios, { type InternalAxiosRequestConfig } from "axios";
+
 
 
 let isRefreshing = false;
-let failedQueue: any[] = [];
+let failedQueue = [];
 
 
-const processQueue = (error?: any) => {
+const processQueue = (error) => {
     failedQueue.forEach(prom => {
         if (error) {
             prom.reject(error);
@@ -18,7 +18,7 @@ const processQueue = (error?: any) => {
     failedQueue = [];
 }
 
-api.interceptors.request.use((config: InternalAxiosRequestConfig) => {
+api.interceptors.request.use((config) => {
     config.withCredentials = true;
     return config;
 })
