@@ -96,13 +96,11 @@ function VerifyBoth() {
         <div className="verification-header">
 
           <h1>
-            Verify both Shipora roles.
+            Verify your dispatch account.
           </h1>
 
           <p>
-            Complete your identity once, then provide the
-            information required for both vendor and dispatch
-            verification.
+            Complete your identity and vehicle information to request access to Shipora's dispatch features.
           </p>
 
         </div>
@@ -112,30 +110,22 @@ function VerifyBoth() {
 
           <div className="verification-progress-item active">
             <span>01</span>
-            <p>Identity</p>
+            <p>Personal Identity</p>
           </div>
 
           <div className="verification-progress-line"></div>
 
           <div className="verification-progress-item">
             <span>02</span>
-            <p>Vendor</p>
+            <p>Vehicle Details</p>
           </div>
 
           <div className="verification-progress-line"></div>
 
           <div className="verification-progress-item">
             <span>03</span>
-            <p>Dispatch</p>
+            <p>Review & Submit</p>
           </div>
-
-          <div className="verification-progress-line"></div>
-
-          <div className="verification-progress-item">
-            <span>04</span>
-            <p>Submit</p>
-          </div>
-
         </div>
 
 
@@ -382,184 +372,6 @@ function VerifyBoth() {
 
           </section>
 
-
-          {/* VENDOR INFORMATION */}
-
-          <section className="verification-section">
-
-            <div className="verification-section-heading">
-
-              <div className="verification-section-number">
-                02
-              </div>
-
-              <div>
-
-                <span>
-                  VENDOR VERIFICATION
-                </span>
-
-                <h2>
-                  Tell us about your business.
-                </h2>
-
-                <p>
-                  Provide the information needed to review
-                  your Vendor role.
-                </p>
-
-              </div>
-
-            </div>
-
-
-            <div className="verification-grid">
-
-              <div className="verification-field verification-field-full">
-
-                <label>
-                  Vendor Type
-                </label>
-
-                <select
-                  name="vendorType"
-                  value={formData.vendorType}
-                  onChange={handleChange}
-                  required
-                >
-
-                  <option value="">
-                    Select vendor type
-                  </option>
-
-                  <option value="individual">
-                    Individual / Sole Proprietor
-                  </option>
-
-                  <option value="registered-business">
-                    Registered Business
-                  </option>
-
-                  <option value="company">
-                    Company
-                  </option>
-
-                </select>
-
-              </div>
-
-
-              <div className="verification-field">
-
-                <label>
-                  Business Name
-                </label>
-
-                <input
-                  type="text"
-                  name="businessName"
-                  value={formData.businessName}
-                  onChange={handleChange}
-                  placeholder="Enter your business name"
-                  required
-                />
-
-              </div>
-
-
-              <div className="verification-field">
-
-                <label>
-                  Business Type
-                </label>
-
-                <input
-                  type="text"
-                  name="businessType"
-                  value={formData.businessType}
-                  onChange={handleChange}
-                  placeholder="e.g. Retail, Fashion, Food"
-                  required
-                />
-
-              </div>
-
-
-              <div className="verification-field">
-
-                <label>
-                  CAC Registration Number
-                  <small>Where applicable</small>
-                </label>
-
-                <input
-                  type="text"
-                  name="cacNumber"
-                  value={formData.cacNumber}
-                  onChange={handleChange}
-                  placeholder="Enter CAC registration number"
-                />
-
-              </div>
-
-
-              <div className="verification-field">
-
-                <label>
-                  Business Phone Number
-                </label>
-
-                <input
-                  type="tel"
-                  name="businessPhone"
-                  value={formData.businessPhone}
-                  onChange={handleChange}
-                  placeholder="+234 800 000 0000"
-                />
-
-              </div>
-
-
-              <div className="verification-field verification-field-full">
-
-                <label>
-                  Business Email
-                  <small>Optional</small>
-                </label>
-
-                <input
-                  type="email"
-                  name="businessEmail"
-                  value={formData.businessEmail}
-                  onChange={handleChange}
-                  placeholder="business@example.com"
-                />
-
-              </div>
-
-
-              <div className="verification-field verification-field-full">
-
-                <label>
-                  Business Address
-                </label>
-
-                <textarea
-                  name="businessAddress"
-                  value={formData.businessAddress}
-                  onChange={handleChange}
-                  placeholder="Enter your business address"
-                  rows="4"
-                  required
-                />
-
-              </div>
-
-            </div>
-
-          </section>
-
-
           {/* DISPATCH INFORMATION */}
 
           <section className="verification-section">
@@ -797,42 +609,17 @@ function VerifyBoth() {
                 </span>
 
                 <h2>
-                  Submit both roles for review.
+                  Ready to Submit?
                 </h2>
 
                 <p>
-                  Your Vendor and Dispatch information will
-                  be submitted for review separately. Approval
-                  of one role does not automatically approve
-                  the other.
+                  Your Dispatch information will
+                  be submitted for review.Submitting this form does not mean that your identity or business has already been verified.
                 </p>
 
               </div>
 
             </div>
-
-
-            <div className="verification-review-box">
-
-              <div className="verification-review-icon">
-                ✓
-              </div>
-
-              <div>
-
-                <strong>
-                  Vendor: Not submitted
-                </strong>
-
-                <p>
-                  Vendor verification will move to pending
-                  review after submission.
-                </p>
-
-              </div>
-
-            </div>
-
 
             <div className="verification-review-box">
 
@@ -873,7 +660,7 @@ function VerifyBoth() {
               type="submit"
               className="verification-primary-button"
             >
-              Submit Both for Verification
+              Submit for Verification
               <span>→</span>
             </button>
 

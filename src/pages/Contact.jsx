@@ -63,7 +63,7 @@ function Contact() {
               <span>EMAIL SUPPORT</span>
 
               <strong>
-                deaver.techh@gmail.com
+                shipora.org@gmail.com
               </strong>
 
               <small>

@@ -691,12 +691,12 @@ function Home() {
 
           <h4>Contact</h4>
 
-          <a href="mailto:deaver.techh@gmail.com">
-            deaver.techh@gmail.com
+          <a href="mailto:shipora.org@gmail.com">
+            shipora.org@gmail.com
           </a>
 
           <a
-            href="https://x.com/xx_deaver"
+            href="https://x.com/shipora_"
             target="_blank"
             rel="noreferrer"
           >

@@ -266,7 +266,7 @@ function Shipments() {
             <div>
 
               <strong>
-                Become a Vendor 
+                Vendor Operations
               </strong>
 
               <span>
@@ -297,7 +297,7 @@ function Shipments() {
             <div>
 
               <strong>
-                Become a Dispatch Rider
+              Rider Workspace
               </strong>
 
               <span>

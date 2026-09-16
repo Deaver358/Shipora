@@ -15,6 +15,7 @@ function CreateShipment() {
     recipientPhone: "",
     paymentBy: "vendor",
     deliveryAmount: "",
+    vehiclePreference: "",
     note: "",
   });
 
@@ -358,134 +359,86 @@ function CreateShipment() {
             </div>
           </section>
 
-          {/* ================= PAYMENT ================= */}
+{/* ================= PREFERENCE ================= */}
 
-          <section className="shipment-form-section">
-            <div className="shipment-section-heading">
-              <span>04</span>
+<section className="shipment-form-section">
+  <div className="shipment-section-heading">
+    <span>04</span>
 
-              <div>
-                <h2>Who pays for delivery?</h2>
+    <div>
+      <h2>What's your vehicle preference?</h2>
 
-                <p>
-                  The delivery fee can be covered by you or
-                  arranged for the recipient to pay.
-                </p>
-              </div>
-            </div>
+      <p>
+        Help us assign a suitable vehicle for your package.
+      </p>
+    </div>
+  </div>
 
-            <div className="payment-choice-grid">
-              <button
-                type="button"
-                className={`payment-choice ${
-                  form.paymentBy === "vendor"
-                    ? "selected"
-                    : ""
-                }`}
-                onClick={() =>
-                  updateField(
-                    "paymentBy",
-                    "vendor"
-                  )
-                }
-              >
-                <span className="payment-choice-icon">
-                  ₦
-                </span>
+  <label className="shipment-full-field">
+    Preferred Vehicle
 
-                <div>
-                  <strong>I will pay</strong>
+    <div className="amount-input">
+      <select
+        value={form.vehiclePreference}
+        onChange={(event) =>
+          updateField(
+            "vehiclePreference",
+            event.target.value
+          )
+        }
+        required
+      >
+        <option value="">Select a vehicle</option>
+        <option value="Motorcycle">Motorcycle</option>
+        <option value="Car">Car</option>
+        <option value="Van">Van</option>
+        <option value="Truck">Truck</option>
+        <option value="Bicycle">Bicycle</option>
+      </select>
+    </div>
+  </label>
 
-                  <p>
-                    You cover the delivery cost when
-                    creating the shipment.
-                  </p>
-                </div>
+  <label className="shipment-full-field">
+    Delivery Amount
 
-                <span className="payment-choice-check">
-                  {form.paymentBy === "vendor"
-                    ? "✓"
-                    : ""}
-                </span>
-              </button>
+    <div className="amount-input">
+      <span>₦</span>
 
-              <button
-                type="button"
-                className={`payment-choice ${
-                  form.paymentBy === "recipient"
-                    ? "selected"
-                    : ""
-                }`}
-                onClick={() =>
-                  updateField(
-                    "paymentBy",
-                    "recipient"
-                  )
-                }
-              >
-                <span className="payment-choice-icon">
-                  →
-                </span>
+      <input
+        type="number"
+        min="0"
+        placeholder="5,000"
+        value={form.deliveryAmount}
+        onChange={(event) =>
+          updateField(
+            "deliveryAmount",
+            event.target.value
+          )
+        }
+        required
+      />
+    </div>
+  </label>
 
-                <div>
-                  <strong>Recipient will pay</strong>
+  <div className="held-payment-note">
+    <div className="held-payment-icon">
+      ₦
+    </div>
 
-                  <p>
-                    The recipient covers the agreed
-                    delivery amount upon delivery
-                    arrangement.
-                  </p>
-                </div>
+    <div>
+      <strong>
+        Payment protection
+      </strong>
 
-                <span className="payment-choice-check">
-                  {form.paymentBy === "recipient"
-                    ? "✓"
-                    : ""}
-                </span>
-              </button>
-            </div>
-
-            <label className="shipment-full-field">
-              Delivery Amount
-
-              <div className="amount-input">
-                <span>₦</span>
-
-                <input
-                  type="number"
-                  min="0"
-                  placeholder="5,000"
-                  value={form.deliveryAmount}
-                  onChange={(event) =>
-                    updateField(
-                      "deliveryAmount",
-                      event.target.value
-                    )
-                  }
-                  required
-                />
-              </div>
-            </label>
-
-            <div className="held-payment-note">
-              <div className="held-payment-icon">
-                ₦
-              </div>
-
-              <div>
-                <strong>
-                  Payment protection
-                </strong>
-
-                <p>
-                  When payment is made through Shipora,
-                  the delivery amount is held for delivery
-                  and released according to the shipment's
-                  completion and dispute status.
-                </p>
-              </div>
-            </div>
-          </section>
+      <p>
+        When payment is made through Shipora,
+        the delivery amount is held for delivery
+        and released according to the shipment's
+        completion and dispute status.
+      </p>
+    </div>
+  </div>
+</section>
 
           {/* ================= NOTE ================= */}
 

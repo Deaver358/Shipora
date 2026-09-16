@@ -153,7 +153,7 @@ function Vendor() {
 
         </section>
 
-      </main>
+      </main> <br /><br /><br />
 
             {/* ================= BOTTOM NAVIGATION ================= */}
 
