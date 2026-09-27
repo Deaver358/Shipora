@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import shiporaLogo from "../assets/shipora-logo.jpeg";
 import "../index.css";
@@ -9,16 +9,120 @@ function Dashboard() {
   const [showDeposit, setShowDeposit] = useState(false);
   const [showWithdraw, setShowWithdraw] = useState(false);
 
-  // Temporary display values.
-  // Connect these to Supabase later.
-  const balance = 0;
-  const heldForDelivery = 0;
+  // ================= WALLET STATE =================
+
+  const [balance, setBalance] = useState(0);
+  const [heldForDelivery, setHeldForDelivery] = useState(0);
+  const [transactions, setTransactions] = useState([]);
+
+  const [walletLoading, setWalletLoading] = useState(true);
+  const [walletError, setWalletError] = useState("");
+
   const currency = "₦";
 
-  const transactions = [];
+  // ================= BACKEND WALLET CONNECTION =================
+  // Replace API_BASE_URL with your backend URL when connecting.
+
+  const API_BASE_URL =
+    import.meta.env.VITE_API_URL || "http://localhost:8000";
+
+  useEffect(() => {
+    const loadWallet = async () => {
+      try {
+        setWalletLoading(true);
+        setWalletError("");
+
+        /*
+         * GET /wallet/balance
+         *
+         * Expected backend response example:
+         *
+         * {
+         *   balance: 125000,
+         *   held_for_delivery: 25000
+         * }
+         */
+
+        const balanceResponse = await fetch(
+          `${API_BASE_URL}/wallet/balance`,
+          {
+            method: "GET",
+            credentials: "include",
+          }
+        );
+
+        if (!balanceResponse.ok) {
+          throw new Error("Unable to load wallet balance.");
+        }
+
+        const balanceData = await balanceResponse.json();
+
+        setBalance(Number(balanceData.balance || 0));
+        setHeldForDelivery(
+          Number(balanceData.held_for_delivery || 0)
+        );
+
+
+        /*
+         * GET /wallet/transactions
+         *
+         * Expected backend response example:
+         *
+         * [
+         *   {
+         *     id: "123",
+         *     type: "deposit",
+         *     title: "Wallet Deposit",
+         *     amount: 50000,
+         *     date: "2026-09-26",
+         *     status: "Completed"
+         *   }
+         * ]
+         */
+
+        const transactionsResponse = await fetch(
+          `${API_BASE_URL}/wallet/transactions`,
+          {
+            method: "GET",
+            credentials: "include",
+          }
+        );
+
+        if (!transactionsResponse.ok) {
+          throw new Error("Unable to load transactions.");
+        }
+
+        const transactionsData =
+          await transactionsResponse.json();
+
+        setTransactions(
+          Array.isArray(transactionsData)
+            ? transactionsData
+            : transactionsData.transactions || []
+        );
+
+      } catch (error) {
+        console.error("Wallet loading error:", error);
+
+        setWalletError(
+          "Unable to load wallet information."
+        );
+
+        // Keep dashboard usable while backend is being connected.
+        setBalance(0);
+        setHeldForDelivery(0);
+        setTransactions([]);
+
+      } finally {
+        setWalletLoading(false);
+      }
+    };
+
+    loadWallet();
+  }, [API_BASE_URL]);
 
   const formatAmount = (amount) =>
-    `${currency}${Number(amount).toLocaleString()}`;
+    `${currency}${Number(amount || 0).toLocaleString()}`;
 
   return (
     <div className="dashboard-page">
@@ -60,7 +164,9 @@ function Dashboard() {
           </div>
 
           <strong className="dashboard-balance-amount">
-            {formatAmount(balance)}
+            {walletLoading
+              ? "Loading..."
+              : formatAmount(balance)}
           </strong>
 
           <div className="dashboard-held">
@@ -69,7 +175,9 @@ function Dashboard() {
               <span>HELD FOR DELIVERY</span>
 
               <strong>
-                {formatAmount(heldForDelivery)}
+                {walletLoading
+                  ? "Loading..."
+                  : formatAmount(heldForDelivery)}
               </strong>
             </div>
 
@@ -80,6 +188,17 @@ function Dashboard() {
           </div>
 
         </section>
+
+
+        {/* ================= WALLET ERROR ================= */}
+
+        {walletError && (
+
+          <div className="dashboard-wallet-error">
+            {walletError}
+          </div>
+
+        )}
 
 
         {/* ================= ACTIONS ================= */}
@@ -142,7 +261,21 @@ function Dashboard() {
           </div>
 
 
-          {transactions.length === 0 ? (
+          {walletLoading ? (
+
+            <div className="dashboard-empty">
+
+              <div className="dashboard-empty-icon">
+                —
+              </div>
+
+              <strong>
+                Loading transactions...
+              </strong>
+
+            </div>
+
+          ) : transactions.length === 0 ? (
 
             <div className="dashboard-empty">
 
@@ -166,60 +299,78 @@ function Dashboard() {
 
             <div className="dashboard-transaction-list">
 
-              {transactions.map((transaction) => (
+              {transactions.map((transaction) => {
 
-                <div
-                  className="dashboard-transaction"
-                  key={transaction.id}
-                >
+                const transactionType =
+                  String(transaction.type || "")
+                    .toLowerCase();
 
-                  <div className="dashboard-transaction-icon">
-                    {transaction.type === "deposit"
-                      ? "+"
-                      : "−"}
+                const isDeposit =
+                  transactionType === "deposit" ||
+                  transactionType === "credit" ||
+                  transactionType === "topup" ||
+                  transactionType === "top_up";
+
+                const isHeld =
+                  transactionType === "held" ||
+                  transactionType === "held_for_delivery";
+
+                return (
+
+                  <div
+                    className="dashboard-transaction"
+                    key={transaction.id}
+                  >
+
+                    <div className="dashboard-transaction-icon">
+                      {isDeposit ? "+" : "−"}
+                    </div>
+
+                    <div className="dashboard-transaction-info">
+
+                      <strong>
+                        {isHeld
+                          ? "HELD FOR DELIVERY"
+                          : transaction.title ||
+                            transaction.description ||
+                            "Transaction"}
+                      </strong>
+
+                      <span>
+                        {transaction.date ||
+                          transaction.created_at ||
+                          ""}
+                      </span>
+
+                    </div>
+
+                    <div className="dashboard-transaction-amount">
+
+                      <strong
+                        className={
+                          isDeposit
+                            ? "credit"
+                            : "debit"
+                        }
+                      >
+                        {isDeposit ? "+" : "−"}
+
+                        {formatAmount(
+                          transaction.amount
+                        )}
+                      </strong>
+
+                      <span>
+                        {transaction.status ||
+                          "Completed"}
+                      </span>
+
+                    </div>
+
                   </div>
 
-                  <div className="dashboard-transaction-info">
-
-                    <strong>
-                      {transaction.type === "held"
-                        ? "HELD FOR DELIVERY"
-                        : transaction.title}
-                    </strong>
-
-                    <span>
-                      {transaction.date}
-                    </span>
-
-                  </div>
-
-                  <div className="dashboard-transaction-amount">
-
-                    <strong
-                      className={
-                        transaction.type === "deposit"
-                          ? "credit"
-                          : "debit"
-                      }
-                    >
-                      {transaction.type === "deposit"
-                        ? "+"
-                        : "−"}
-
-                      {formatAmount(
-                        transaction.amount
-                      )}
-                    </strong>
-
-                    <span>
-                      {transaction.status}
-                    </span>
-
-                  </div>
-
-                </div>
-
-              ))}
+                );
+              })}
 
             </div>
 
