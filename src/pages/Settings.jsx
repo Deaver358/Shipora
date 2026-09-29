@@ -172,7 +172,7 @@ function Settings() {
 
           <button
             className="settings-option"
-            onClick={() => navigate("/ChangePassword")}
+            onClick={() => navigate("/Change-Password")}
           >
 
             <span className="settings-option-icon">

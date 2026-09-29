@@ -1,36 +1,218 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import shiporaLogo from "../assets/shipora-logo.jpeg";
-import "../index.css";
+import "../styles/change.css";
+
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1.0";
 
 function Profile() {
   const navigate = useNavigate();
 
-  const [profileImage, setProfileImage] = useState(null);
+  const [profile, setProfile] = useState(null);
+  const [fullname, setFullname] = useState("");
+  const [phone, setPhone] = useState("");
 
-  const user = {
-    name: "David Emmanuel",
-    email: "deaver.techh@gmail.com",
-    phone: "080XXXXXXXX",
-    role: "Vendor",
-    memberSince: "August 2026",
-    accountId: "SHP-USER-2048",
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  const loadProfile = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await fetch(`${API_URL}/profile/me`, {
+        method: "GET",
+        credentials: "include",
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail || "Unable to load your profile."
+        );
+      }
+
+      setProfile(data);
+      setFullname(data.fullname || "");
+      setPhone(data.phone || "");
+    } catch (err) {
+      setError(err.message || "Unable to load your profile.");
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const handleImageUpload = (event) => {
-    const file = event.target.files?.[0];
+  const handleSave = async () => {
+    if (!fullname.trim()) {
+      setError("Full name is required.");
+      return;
+    }
 
-    if (!file) return;
+    if (!phone.trim()) {
+      setError("Phone number is required.");
+      return;
+    }
 
-    const imageUrl = URL.createObjectURL(file);
-    setProfileImage(imageUrl);
+    try {
+      setSaving(true);
+      setError("");
+      setSuccess("");
+
+      const response = await fetch(`${API_URL}/profile/me`, {
+        method: "PATCH",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          fullname: fullname.trim(),
+          phone: phone.trim(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail || "Unable to update your profile."
+        );
+      }
+
+      setProfile(data);
+      setFullname(data.fullname || "");
+      setPhone(data.phone || "");
+      setEditing(false);
+      setSuccess("Profile updated successfully.");
+
+      setTimeout(() => {
+        setSuccess("");
+      }, 2500);
+    } catch (err) {
+      setError(err.message || "Unable to update your profile.");
+    } finally {
+      setSaving(false);
+    }
   };
+
+  const getInitial = () => {
+    if (!profile?.fullname) return "S";
+
+    return profile.fullname
+      .trim()
+      .charAt(0)
+      .toUpperCase();
+  };
+
+  const getRole = () => {
+    if (!profile?.role) return "Account";
+
+    return profile.role
+      .toString()
+      .replace(/_/g, " ")
+      .replace(/\b\w/g, (letter) => letter.toUpperCase());
+  };
+
+  const renderStars = (rating = 0) => {
+    const roundedRating = Math.round(Number(rating) || 0);
+
+    return (
+      <div className="profile-rating-stars">
+        {[1, 2, 3, 4, 5].map((star) => (
+          <span
+            key={star}
+            className={star <= roundedRating ? "filled" : ""}
+          >
+            ★
+          </span>
+        ))}
+      </div>
+    );
+  };
+
+  if (loading) {
+    return (
+      <div className="account-page profile-page">
+        <header className="account-topbar">
+          <button
+            className="account-back-button"
+            onClick={() => navigate(-1)}
+            aria-label="Go back"
+          >
+            ←
+          </button>
+
+          <img
+            src={shiporaLogo}
+            alt="Shipora"
+            className="app-logo"
+          />
+
+          <div className="account-page-label">
+            PROFILE
+          </div>
+        </header>
+
+        <main className="account-content">
+          <div className="profile-loading">
+            Loading your profile...
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  if (!profile) {
+    return (
+      <div className="account-page profile-page">
+        <header className="account-topbar">
+          <button
+            className="account-back-button"
+            onClick={() => navigate(-1)}
+            aria-label="Go back"
+          >
+            ←
+          </button>
+
+          <img
+            src={shiporaLogo}
+            alt="Shipora"
+            className="app-logo"
+          />
+
+          <div className="account-page-label">
+            PROFILE
+          </div>
+        </header>
+
+        <main className="account-content">
+          <div className="profile-error-card">
+            <strong>Unable to load profile</strong>
+            <p>{error || "Please try again."}</p>
+
+            <button onClick={loadProfile}>
+              Try Again
+            </button>
+          </div>
+        </main>
+      </div>
+    );
+  }
+
+  const vendor = profile.vendor;
+  const dispatcher = profile.dispatcher;
 
   return (
     <div className="account-page profile-page">
-
       <header className="account-topbar">
-
         <button
           className="account-back-button"
           onClick={() => navigate(-1)}
@@ -39,75 +221,67 @@ function Profile() {
           ←
         </button>
 
-        <img src={shiporaLogo} alt="Shipora" className="app-logo" />
-        
+        <img
+          src={shiporaLogo}
+          alt="Shipora"
+          className="app-logo"
+        />
+
         <div className="account-page-label">
           PROFILE
         </div>
-
       </header>
 
       <main className="account-content">
 
-        <section className="account-hero-card">
+        {error && (
+          <div className="profile-message profile-message-error">
+            {error}
+          </div>
+        )}
 
+        {success && (
+          <div className="profile-message profile-message-success">
+            {success}
+          </div>
+        )}
+
+        <section className="account-hero-card">
           <div className="profile-cover-glow"></div>
 
           <div className="profile-avatar-wrapper">
-
-            {profileImage ? (
+            {profile.avatar_url ? (
               <img
-                src={profileImage}
-                alt="Profile"
+                src={profile.avatar_url}
+                alt={profile.fullname}
                 className="profile-avatar-image"
               />
             ) : (
               <div className="profile-avatar">
-                {user.name.charAt(0)}
+                {getInitial()}
               </div>
             )}
-
-            <label
-              className="profile-upload-button"
-              htmlFor="profile-image-upload"
-              title="Upload profile image"
-            >
-              +
-            </label>
-
-            <input
-              id="profile-image-upload"
-              type="file"
-              accept="image/*"
-              onChange={handleImageUpload}
-              hidden
-            />
-
           </div>
 
           <div className="profile-hero-info">
-
             <span className="account-eyebrow">
               SHIPORA ACCOUNT
             </span>
 
-            <h1>{user.name}</h1>
+            <h1>{profile.fullname}</h1>
 
-            <p>{user.email}</p>
+            <p>{profile.email}</p>
 
             <div className="profile-badges">
-
               <span className="profile-role-badge">
-                {user.role}
+                {getRole()}
               </span>
 
               <span className="profile-status-badge">
                 <i></i>
                 Active Account
               </span>
-
             </div>
-
           </div>
 
           <button
@@ -117,78 +291,254 @@ function Profile() {
             <span>⚙</span>
             Settings
           </button>
-
         </section>
 
-
         <section className="account-section">
-
           <div className="account-section-heading">
             <span>ACCOUNT INFORMATION</span>
+
             <h2>Your registered details</h2>
+
             <p>
-              These details are associated with your Shipora account.
+              Your information is managed through your Shipora account.
             </p>
           </div>
-
 
           <div className="profile-details-grid">
 
             <div className="profile-detail-card">
               <span>FULL NAME</span>
-              <strong>{user.name}</strong>
+
+              {editing ? (
+                <input
+                  type="text"
+                  value={fullname}
+                  onChange={(e) => setFullname(e.target.value)}
+                />
+              ) : (
+                <strong>{profile.fullname || "—"}</strong>
+              )}
             </div>
 
             <div className="profile-detail-card">
               <span>EMAIL ADDRESS</span>
-              <strong>{user.email}</strong>
+              <strong>{profile.email || "—"}</strong>
             </div>
 
             <div className="profile-detail-card">
               <span>PHONE NUMBER</span>
-              <strong>{user.phone}</strong>
+
+              {editing ? (
+                <input
+                  type="tel"
+                  value={phone}
+                  onChange={(e) => setPhone(e.target.value)}
+                />
+              ) : (
+                <strong>{profile.phone || "—"}</strong>
+              )}
             </div>
 
             <div className="profile-detail-card">
               <span>ACCOUNT ROLE</span>
-              <strong>{user.role}</strong>
-            </div>
-
-            <div className="profile-detail-card">
-              <span>MEMBER SINCE</span>
-              <strong>{user.memberSince}</strong>
-            </div>
-
-            <div className="profile-detail-card">
-              <span>ACCOUNT ID</span>
-              <strong>{user.accountId}</strong>
+              <strong>{getRole()}</strong>
             </div>
 
           </div>
 
+          <div className="profile-edit-actions">
+            {!editing ? (
+              <button
+                className="profile-edit-button"
+                onClick={() => {
+                  setError("");
+                  setSuccess("");
+                  setEditing(true);
+                }}
+              >
+                Edit Profile
+              </button>
+            ) : (
+              <>
+                <button
+                  className="profile-cancel-button"
+                  onClick={() => {
+                    setFullname(profile.fullname || "");
+                    setPhone(profile.phone || "");
+                    setError("");
+                    setEditing(false);
+                  }}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  className="profile-save-button"
+                  onClick={handleSave}
+                  disabled={saving}
+                >
+                  {saving ? "Saving..." : "Save Changes"}
+                </button>
+              </>
+            )}
+          </div>
         </section>
 
+        {vendor && (
+          <section className="account-section">
+            <div className="account-section-heading">
+              <span>VENDOR PROFILE</span>
+
+              <h2>Business information</h2>
+
+              <p>
+                Information associated with your vendor account.
+              </p>
+            </div>
+
+            <div className="profile-details-grid">
+
+              <div className="profile-detail-card">
+                <span>BUSINESS NAME</span>
+                <strong>{vendor.business_name || "—"}</strong>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>VENDOR TYPE</span>
+                <strong>{vendor.vendor_type || "—"}</strong>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>NIN VERIFICATION</span>
+                <strong>
+                  {vendor.nin_verified ? "Verified" : "Pending"}
+                </strong>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>CAC VERIFICATION</span>
+                <strong>
+                  {vendor.cac_verified ? "Verified" : "Pending"}
+                </strong>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>RATING</span>
+
+                <div className="profile-rating-value">
+                  {renderStars(vendor.average_rating)}
+
+                  <strong>
+                    {Number(vendor.average_rating || 0).toFixed(1)}
+                  </strong>
+
+                  <small>
+                    ({vendor.total_ratings || 0} ratings)
+                  </small>
+                </div>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>PAYOUT ACCOUNT</span>
+
+                <strong>
+                  {vendor.has_payout_account
+                    ? vendor.account_name || "Connected"
+                    : "Not connected"}
+                </strong>
+              </div>
+
+            </div>
+          </section>
+        )}
+
+        {dispatcher && (
+          <section className="account-section">
+            <div className="account-section-heading">
+              <span>DISPATCHER PROFILE</span>
+
+              <h2>Dispatch information</h2>
+
+              <p>
+                Information associated with your dispatcher account.
+              </p>
+            </div>
+
+            <div className="profile-details-grid">
+
+              <div className="profile-detail-card">
+                <span>DISPATCH NAME</span>
+                <strong>{dispatcher.dispatch_name || "—"}</strong>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>VEHICLE TYPE</span>
+                <strong>{dispatcher.vehicle_type || "—"}</strong>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>NIN VERIFICATION</span>
+                <strong>
+                  {dispatcher.nin_verified ? "Verified" : "Pending"}
+                </strong>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>VEHICLE VERIFICATION</span>
+                <strong>
+                  {dispatcher.vehicle_verified
+                    ? "Verified"
+                    : "Pending"}
+                </strong>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>RATING</span>
+
+                <div className="profile-rating-value">
+                  {renderStars(dispatcher.average_rating)}
+
+                  <strong>
+                    {Number(dispatcher.average_rating || 0).toFixed(1)}
+                  </strong>
+
+                  <small>
+                    ({dispatcher.total_ratings || 0} ratings)
+                  </small>
+                </div>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>PAYOUT ACCOUNT</span>
+
+                <strong>
+                  {dispatcher.has_payout_account
+                    ? dispatcher.account_name || "Connected"
+                    : "Not connected"}
+                </strong>
+              </div>
+
+            </div>
+          </section>
+        )}
 
         <section className="profile-info-banner">
-
           <div className="profile-info-icon">
             ✓
           </div>
 
           <div>
-            <strong>Your account information</strong>
+            <strong>Account information</strong>
+
             <p>
-              Your profile details are the information you provided
-              when registering with Shipora. Profile editing will be
-              available when account management is connected to the
-              Shipora backend.
+              Your profile information is retrieved directly from
+              your Shipora account.
             </p>
           </div>
-
         </section>
 
       </main>
-
     </div>
   );
 }

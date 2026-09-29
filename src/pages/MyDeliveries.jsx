@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import "../index.css";
+import "../styles/change.css";
 
 function MyDeliveries() {
   const navigate = useNavigate();

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Column
+from sqlalchemy import Column, String, Enum as SQLEnum
 import sqlalchemy.dialects.postgresql as pg
 from sqlmodel import SQLModel, Field
 
@@ -30,7 +30,12 @@ class BothRoles(SQLModel, table=True):
     )
 
     user_id: uuid.UUID = Field(
-        sa_column=Column(pg.UUID, nullable=False, unique=True, index=True)
+        sa_column=Column(
+            pg.UUID,
+            nullable=False,
+            unique=True,
+            index=True,
+        )
     )
 
     # =========================
@@ -245,65 +250,164 @@ class BothRoles(SQLModel, table=True):
     )
 
     # =========================
-    # HYBRID KYC + PAYOUT (mirrors Vendor + Dispatcher)
+    # HYBRID KYC
     # =========================
 
     nin_verification_status: VerificationStatus = Field(
         default=VerificationStatus.PENDING,
         sa_column=Column(
-            pg.ENUM(VerificationStatus, name="bothrolesninverificationstatus"),
+            SQLEnum(
+                VerificationStatus,
+                name="bothrolesninverificationstatus",
+                values_callable=lambda enum_class: [
+                    member.value for member in enum_class
+                ],
+            ),
             nullable=False,
-            server_default=VerificationStatus.PENDING.value,
+            server_default="pending",
         ),
     )
+
     nin_verification_ref: Optional[str] = Field(
-        default=None, sa_column=Column(pg.VARCHAR, nullable=True)
+        default=None,
+        sa_column=Column(
+            pg.VARCHAR,
+            nullable=True,
+        ),
     )
+
     cac_verification_status: VerificationStatus = Field(
         default=VerificationStatus.PENDING,
         sa_column=Column(
-            pg.ENUM(VerificationStatus, name="bothrolescacverificationstatus"),
+            SQLEnum(
+                VerificationStatus,
+                name="bothrolescacverificationstatus",
+                values_callable=lambda enum_class: [
+                    member.value for member in enum_class
+                ],
+            ),
             nullable=False,
-            server_default=VerificationStatus.PENDING.value,
+            server_default="pending",
         ),
     )
+
     cac_verification_ref: Optional[str] = Field(
-        default=None, sa_column=Column(pg.VARCHAR, nullable=True)
+        default=None,
+        sa_column=Column(
+            pg.VARCHAR,
+            nullable=True,
+        ),
     )
+
     vehicle_verification_status: VerificationStatus = Field(
         default=VerificationStatus.PENDING,
         sa_column=Column(
-            pg.ENUM(VerificationStatus, name="bothrolesvehicleverificationstatus"),
+            SQLEnum(
+                VerificationStatus,
+                name="bothrolesvehicleverificationstatus",
+                values_callable=lambda enum_class: [
+                    member.value for member in enum_class
+                ],
+            ),
             nullable=False,
-            server_default=VerificationStatus.PENDING.value,
+            server_default="pending",
         ),
     )
+
     vehicle_document_url: Optional[str] = Field(
-        default=None, sa_column=Column(pg.VARCHAR, nullable=True)
+        default=None,
+        sa_column=Column(
+            pg.VARCHAR,
+            nullable=True,
+        ),
     )
+
     vehicle_rejection_reason: Optional[str] = Field(
-        default=None, sa_column=Column(pg.VARCHAR, nullable=True)
+        default=None,
+        sa_column=Column(
+            pg.VARCHAR,
+            nullable=True,
+        ),
     )
 
-    bank_code: Optional[str] = Field(default=None, sa_column=Column(pg.VARCHAR, nullable=True))
-    account_number: Optional[str] = Field(default=None, sa_column=Column(pg.VARCHAR, nullable=True))
-    account_name: Optional[str] = Field(default=None, sa_column=Column(pg.VARCHAR, nullable=True))
+    # =========================
+    # PAYOUT
+    # =========================
+
+    bank_code: Optional[str] = Field(
+        default=None,
+        sa_column=Column(
+            pg.VARCHAR,
+            nullable=True,
+        ),
+    )
+
+    account_number: Optional[str] = Field(
+        default=None,
+        sa_column=Column(
+            pg.VARCHAR,
+            nullable=True,
+        ),
+    )
+
+    account_name: Optional[str] = Field(
+        default=None,
+        sa_column=Column(
+            pg.VARCHAR,
+            nullable=True,
+        ),
+    )
+
     paystack_recipient_code: Optional[str] = Field(
-        default=None, sa_column=Column(pg.VARCHAR, nullable=True)
+        default=None,
+        sa_column=Column(
+            pg.VARCHAR,
+            nullable=True,
+        ),
     )
 
-    # separate ratings for the vendor side and dispatcher side of this account
+    # =========================
+    # VENDOR RATINGS
+    # =========================
+
     vendor_average_rating: float = Field(
-        default=0.0, sa_column=Column(pg.FLOAT, nullable=False, server_default="0")
+        default=0.0,
+        sa_column=Column(
+            pg.FLOAT,
+            nullable=False,
+            server_default="0",
+        ),
     )
+
     vendor_total_ratings: int = Field(
-        default=0, sa_column=Column(pg.INTEGER, nullable=False, server_default="0")
+        default=0,
+        sa_column=Column(
+            pg.INTEGER,
+            nullable=False,
+            server_default="0",
+        ),
     )
+
+    # =========================
+    # DISPATCHER RATINGS
+    # =========================
+
     dispatcher_average_rating: float = Field(
-        default=0.0, sa_column=Column(pg.FLOAT, nullable=False, server_default="0")
+        default=0.0,
+        sa_column=Column(
+            pg.FLOAT,
+            nullable=False,
+            server_default="0",
+        ),
     )
+
     dispatcher_total_ratings: int = Field(
-        default=0, sa_column=Column(pg.INTEGER, nullable=False, server_default="0")
+        default=0,
+        sa_column=Column(
+            pg.INTEGER,
+            nullable=False,
+            server_default="0",
+        ),
     )
 
     # =========================

@@ -3,7 +3,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Column
+from sqlalchemy import Column, Enum as SQLEnum
 import sqlalchemy.dialects.postgresql as pg
 from sqlmodel import SQLModel, Field
 
@@ -34,29 +34,66 @@ class Notification(SQLModel, table=True):
     )
 
     # who this notification is for
-    user_id: uuid.UUID = Field(sa_column=Column(pg.UUID, nullable=False, index=True))
+    user_id: uuid.UUID = Field(
+        sa_column=Column(
+            pg.UUID,
+            nullable=False,
+            index=True,
+        )
+    )
 
     type: NotificationType = Field(
         default=NotificationType.SYSTEM,
         sa_column=Column(
-            pg.ENUM(NotificationType, name="notificationtype"),
+            SQLEnum(
+                NotificationType,
+                name="notificationtype",
+                values_callable=lambda enum_class: [
+                    member.value for member in enum_class
+                ],
+            ),
             nullable=False,
-            server_default=NotificationType.SYSTEM.value,
+            server_default="system",
         ),
     )
 
-    title: str = Field(sa_column=Column(pg.VARCHAR, nullable=False))
-    message: str = Field(sa_column=Column(pg.VARCHAR, nullable=False))
+    title: str = Field(
+        sa_column=Column(
+            pg.VARCHAR,
+            nullable=False,
+        )
+    )
 
-    # optional deep-link target so the frontend can route to the right shipment/dispute/etc.
-    shipment_id: Optional[uuid.UUID] = Field(default=None, sa_column=Column(pg.UUID, nullable=True))
+    message: str = Field(
+        sa_column=Column(
+            pg.VARCHAR,
+            nullable=False,
+        )
+    )
+
+    # optional deep-link target so the frontend can route
+    # to the right shipment/dispute/etc.
+    shipment_id: Optional[uuid.UUID] = Field(
+        default=None,
+        sa_column=Column(
+            pg.UUID,
+            nullable=True,
+        ),
+    )
 
     read: bool = Field(
         default=False,
-        sa_column=Column(pg.BOOLEAN, nullable=False, server_default="false"),
+        sa_column=Column(
+            pg.BOOLEAN,
+            nullable=False,
+            server_default="false",
+        ),
     )
 
     created_at: datetime = Field(
         default_factory=lambda: datetime.now(timezone.utc),
-        sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=False),
+        sa_column=Column(
+            pg.TIMESTAMP(timezone=True),
+            nullable=False,
+        ),
     )

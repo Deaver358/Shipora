@@ -3,19 +3,23 @@ import { useNavigate } from "react-router-dom";
 import shiporaLogo from "../assets/shipora-logo.jpeg";
 import "../index.css";
 
+const API_URL =
+  import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1.0";
+
 function ChangePassword() {
   const navigate = useNavigate();
 
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [verificationCode, setVerificationCode] = useState("");
 
-  const [codeSent, setCodeSent] = useState(false);
+  const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState("");
   const [error, setError] = useState("");
 
-  const handleSendCode = () => {
+  const handleChangePassword = async (event) => {
+    event.preventDefault();
+
     setError("");
     setMessage("");
 
@@ -24,50 +28,74 @@ function ChangePassword() {
       return;
     }
 
-    if (newPassword !== confirmPassword) {
-      setError("New passwords do not match.");
-      return;
-    }
-
     if (newPassword.length < 8) {
       setError("Your new password must be at least 8 characters.");
       return;
     }
 
-    setCodeSent(true);
-    setMessage(
-      "A verification code has been sent to your registered email address."
-    );
-  };
-
-  const handleChangePassword = (event) => {
-    event.preventDefault();
-
-    setError("");
-    setMessage("");
-
-    if (!verificationCode) {
-      setError("Please enter the verification code.");
-      return;
-    }
-
     if (newPassword !== confirmPassword) {
       setError("New passwords do not match.");
       return;
     }
 
-    // Backend password change will be connected later.
-    setMessage("Your password has been changed successfully.");
+    if (currentPassword === newPassword) {
+      setError("Your new password must be different from your current password.");
+      return;
+    }
 
-    setTimeout(() => {
-      navigate(-1);
-    }, 1200);
+    setLoading(true);
+
+    try {
+      const response = await fetch(`${API_URL}/profile/change-password`, {
+        method: "POST",
+        credentials: "include",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          current_password: currentPassword,
+          new_password: newPassword,
+        }),
+      });
+
+      let data = null;
+
+      try {
+        data = await response.json();
+      } catch {
+        data = null;
+      }
+
+      if (!response.ok) {
+        throw new Error(
+          data?.detail ||
+            data?.message ||
+            "Unable to change your password."
+        );
+      }
+
+      setMessage(
+        data?.message || "Your password has been changed successfully."
+      );
+
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+
+      setTimeout(() => {
+        navigate(-1);
+      }, 1200);
+    } catch (err) {
+      setError(
+        err.message || "Something went wrong while changing your password."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
     <div className="change-password-page">
-
-      {/* ================= HEADER ================= */}
 
       <header className="change-password-header">
 
@@ -92,9 +120,6 @@ function ChangePassword() {
 
       </header>
 
-
-      {/* ================= CONTENT ================= */}
-
       <main className="change-password-content">
 
         <section className="change-password-intro">
@@ -116,9 +141,6 @@ function ChangePassword() {
 
         </section>
 
-
-        {/* ================= SECURITY NOTICE ================= */}
-
         <section className="change-password-notice">
 
           <strong>Password security</strong>
@@ -130,15 +152,10 @@ function ChangePassword() {
 
         </section>
 
-
-        {/* ================= FORM ================= */}
-
         <form
           className="change-password-form"
           onSubmit={handleChangePassword}
         >
-
-          {/* CURRENT PASSWORD */}
 
           <div className="change-password-field">
 
@@ -155,12 +172,10 @@ function ChangePassword() {
               }
               placeholder="Enter your current password"
               autoComplete="current-password"
+              disabled={loading}
             />
 
           </div>
-
-
-          {/* NEW PASSWORD */}
 
           <div className="change-password-field">
 
@@ -177,6 +192,7 @@ function ChangePassword() {
               }
               placeholder="Enter your new password"
               autoComplete="new-password"
+              disabled={loading}
             />
 
             <small>
@@ -184,9 +200,6 @@ function ChangePassword() {
             </small>
 
           </div>
-
-
-          {/* CONFIRM PASSWORD */}
 
           <div className="change-password-field">
 
@@ -203,60 +216,10 @@ function ChangePassword() {
               }
               placeholder="Confirm your new password"
               autoComplete="new-password"
+              disabled={loading}
             />
 
           </div>
-
-
-          {/* VERIFICATION */}
-
-          {codeSent && (
-
-            <div className="change-password-verification">
-
-              <div>
-
-                <span className="change-password-eyebrow">
-                  EMAIL VERIFICATION
-                </span>
-
-                <h2>
-                  Verify the change.
-                </h2>
-
-                <p>
-                  Enter the verification code sent to your
-                  registered email address.
-                </p>
-
-              </div>
-
-              <div className="change-password-field">
-
-                <label htmlFor="verification-code">
-                  VERIFICATION CODE
-                </label>
-
-                <input
-                  id="verification-code"
-                  type="text"
-                  inputMode="numeric"
-                  value={verificationCode}
-                  onChange={(event) =>
-                    setVerificationCode(event.target.value)
-                  }
-                  placeholder="Enter verification code"
-                  autoComplete="one-time-code"
-                />
-
-              </div>
-
-            </div>
-
-          )}
-
-
-          {/* ERROR */}
 
           {error && (
             <div className="change-password-message error">
@@ -264,45 +227,28 @@ function ChangePassword() {
             </div>
           )}
 
-
-          {/* SUCCESS */}
-
           {message && (
             <div className="change-password-message success">
               {message}
             </div>
           )}
 
-
-          {/* BUTTON */}
-
-          {!codeSent ? (
-
-            <button
-              type="button"
-              className="change-password-primary"
-              onClick={handleSendCode}
-            >
-              Continue
-              <span>→</span>
-            </button>
-
-          ) : (
-
-            <button
-              type="submit"
-              className="change-password-primary"
-            >
-              Change Password
-              <span>→</span>
-            </button>
-
-          )}
+          <button
+            type="submit"
+            className="change-password-primary"
+            disabled={loading}
+          >
+            {loading ? (
+              "Updating..."
+            ) : (
+              <>
+                Change Password
+                <span>→</span>
+              </>
+            )}
+          </button>
 
         </form>
-
-
-        {/* ================= FORGOT PASSWORD ================= */}
 
         <div className="change-password-footer">
 

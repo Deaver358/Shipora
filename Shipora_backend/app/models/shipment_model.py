@@ -14,6 +14,7 @@ class ShipmentStatus(str, Enum):
     ASSIGNED = "assigned"
     PICKED_UP = "picked_up"
     IN_TRANSIT = "in_transit"
+    OUT_FOR_DELIVERY = "out_for_delivery"
     DELIVERED = "delivered"
     COMPLETED = "completed"
     DISPUTED = "disputed"
@@ -40,8 +41,6 @@ class Shipment(SQLModel, table=True):
     pickup: str = Field(sa_column=Column(pg.VARCHAR, nullable=False))
     destination: str = Field(sa_column=Column(pg.VARCHAR, nullable=False))
 
-    # Kept for compatibility with the existing CreateShipment form.
-    # Customer checkout can fill these later.
     recipient_name: Optional[str] = Field(default=None, sa_column=Column(pg.VARCHAR, nullable=True))
     recipient_phone: Optional[str] = Field(default=None, sa_column=Column(pg.VARCHAR, nullable=True))
     recipient_address: Optional[str] = Field(default=None, sa_column=Column(pg.VARCHAR, nullable=True))
@@ -59,24 +58,102 @@ class Shipment(SQLModel, table=True):
     platform_commission: int = Field(default=0, sa_column=Column(pg.INTEGER, nullable=False))
     payment_by: str = Field(default="vendor", sa_column=Column(pg.VARCHAR, nullable=False))
 
-    status: ShipmentStatus = Field(default=ShipmentStatus.PENDING_PAYMENT, sa_column=Column(pg.ENUM(ShipmentStatus, name="shipmentstatus"), nullable=False, server_default=ShipmentStatus.PENDING_PAYMENT.value))
-    payment_status: PaymentStatus = Field(default=PaymentStatus.UNPAID, sa_column=Column(pg.ENUM(PaymentStatus, name="paymentstatus"), nullable=False, server_default=PaymentStatus.UNPAID.value))
+    status: ShipmentStatus = Field(
+        default=ShipmentStatus.PENDING_PAYMENT,
+        sa_column=Column(
+            pg.ENUM(
+                ShipmentStatus,
+                name="shipmentstatus",
+                values_callable=lambda enum_class: [
+                    member.value for member in enum_class
+                ],
+            ),
+            nullable=False,
+            server_default=ShipmentStatus.PENDING_PAYMENT.value,
+        ),
+    )
 
-    tracking_number: str = Field(default_factory=lambda: f"SHP-{uuid.uuid4().hex[:10].upper()}", sa_column=Column(pg.VARCHAR, nullable=False, unique=True, index=True))
-    public_token: str = Field(default_factory=lambda: uuid.uuid4().hex, sa_column=Column(pg.VARCHAR, nullable=False, unique=True, index=True))
+    payment_status: PaymentStatus = Field(
+        default=PaymentStatus.UNPAID,
+        sa_column=Column(
+            pg.ENUM(
+                PaymentStatus,
+                name="paymentstatus",
+                values_callable=lambda enum_class: [
+                    member.value for member in enum_class
+                ],
+            ),
+            nullable=False,
+            server_default=PaymentStatus.UNPAID.value,
+        ),
+    )
 
-    delivered_at: Optional[datetime] = Field(default=None, sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=True))
-    auto_release_at: Optional[datetime] = Field(default=None, sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=True))
-    completed_at: Optional[datetime] = Field(default=None, sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=True))
+    tracking_number: str = Field(
+        default_factory=lambda: f"SHP-{uuid.uuid4().hex[:10].upper()}",
+        sa_column=Column(pg.VARCHAR, nullable=False, unique=True, index=True),
+    )
 
-    current_location: Optional[str] = Field(default=None, sa_column=Column(pg.VARCHAR, nullable=True))
-    current_lat: Optional[float] = Field(default=None, sa_column=Column(pg.DOUBLE_PRECISION, nullable=True))
-    current_lng: Optional[float] = Field(default=None, sa_column=Column(pg.DOUBLE_PRECISION, nullable=True))
-    location_updated_at: Optional[datetime] = Field(default=None, sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=True))
+    public_token: str = Field(
+        default_factory=lambda: uuid.uuid4().hex,
+        sa_column=Column(pg.VARCHAR, nullable=False, unique=True, index=True),
+    )
 
-    dispute_reason: Optional[str] = Field(default=None, sa_column=Column(pg.VARCHAR, nullable=True))
-    dispute_resolution: Optional[str] = Field(default=None, sa_column=Column(pg.VARCHAR, nullable=True))
-    dispute_resolved_at: Optional[datetime] = Field(default=None, sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=True))
+    delivered_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=True),
+    )
 
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=False))
-    updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=False))
+    auto_release_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=True),
+    )
+
+    completed_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=True),
+    )
+
+    current_location: Optional[str] = Field(
+        default=None,
+        sa_column=Column(pg.VARCHAR, nullable=True),
+    )
+
+    current_lat: Optional[float] = Field(
+        default=None,
+        sa_column=Column(pg.DOUBLE_PRECISION, nullable=True),
+    )
+
+    current_lng: Optional[float] = Field(
+        default=None,
+        sa_column=Column(pg.DOUBLE_PRECISION, nullable=True),
+    )
+
+    location_updated_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=True),
+    )
+
+    dispute_reason: Optional[str] = Field(
+        default=None,
+        sa_column=Column(pg.VARCHAR, nullable=True),
+    )
+
+    dispute_resolution: Optional[str] = Field(
+        default=None,
+        sa_column=Column(pg.VARCHAR, nullable=True),
+    )
+
+    dispute_resolved_at: Optional[datetime] = Field(
+        default=None,
+        sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=True),
+    )
+
+    created_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=False),
+    )
+
+    updated_at: datetime = Field(
+        default_factory=lambda: datetime.now(timezone.utc),
+        sa_column=Column(pg.TIMESTAMP(timezone=True), nullable=False),
+    )

@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 from enum import Enum
 from typing import Optional
 
-from sqlalchemy import Column
+from sqlalchemy import Column, String, Enum as SQLEnum
 import sqlalchemy.dialects.postgresql as pg
 from sqlmodel import SQLModel, Field
 
@@ -198,7 +198,13 @@ class Dispatcher(SQLModel, table=True):
     nin_verification_status: VerificationStatus = Field(
         default=VerificationStatus.PENDING,
         sa_column=Column(
-            pg.ENUM(VerificationStatus, name="ninverificationstatus"),
+            SQLEnum(
+    VerificationStatus,
+    name="ninverificationstatus",
+    values_callable=lambda enum_class: [
+        member.value for member in enum_class
+    ],
+),
             nullable=False,
             server_default=VerificationStatus.PENDING.value,
         ),
@@ -211,7 +217,13 @@ class Dispatcher(SQLModel, table=True):
     vehicle_verification_status: VerificationStatus = Field(
         default=VerificationStatus.PENDING,
         sa_column=Column(
-            pg.ENUM(VerificationStatus, name="vehicleverificationstatus"),
+            SQLEnum(
+    VerificationStatus,
+    name="vehicleverificationstatus",
+    values_callable=lambda enum_class: [
+        member.value for member in enum_class
+    ],
+),
             nullable=False,
             server_default=VerificationStatus.PENDING.value,
         ),

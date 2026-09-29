@@ -11,6 +11,14 @@ import ResetPassword from "./pages/ResetPassword";
 
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
+import AdminVehicleKYC from "./pages/AdminVehicleKYC";
+import AdminDisputes from "./pages/AdminDisputes";
+import Rating from "./pages/Rating";
+import Checkout from "./pages/Checkout";
+import PaymentResult from "./pages/PaymentResult";
+import TopUp from "./pages/TopUp";
+import Withdraw from "./pages/Withdraw";
+import BankAccount from "./pages/BankAccount";
 
 import Shipments from "./pages/Shipments";
 import MyShipments from "./pages/MyShipments";
@@ -41,8 +49,6 @@ import Review from "./pages/Review";
 import Rejected from "./pages/Rejected";
 import Verified from "./pages/Verified";
 
-import Admin from "./pages/Admin";
-
 import "./index.css";
 import ChangePassword from "./pages/ChangePassword";
 
@@ -55,6 +61,16 @@ function App() {
         <Route path="/review" element={<Review />} />
         <Route path="/rejected" element={<Rejected />} />
         <Route path="/verified" element={<Verified />} />
+        <Route path="/rating" element={<Rating />} />
+        <Route path="/admin/vehicle-kyc" element={<AdminVehicleKYC />} />
+<Route path="/admin/disputes" element={<AdminDisputes />} />
+
+<Route path="/checkout/:token" element={<Checkout />} />
+<Route path="/payment-result" element={<PaymentResult />} />
+
+<Route path="/top-up" element={<TopUp />} />
+<Route path="/withdraw" element={<Withdraw />} />
+<Route path="/bank-account" element={<BankAccount />} />
 
         <Route
   path="/my-deliveries"
@@ -87,7 +103,7 @@ function App() {
 
         <Route path="/help" element={<Help />} /> 
         <Route path="/contact" element={<Contact />} />
-        <Route path="/changePassword" element={<ChangePassword />} />
+        <Route path="/change-Password" element={<ChangePassword />} />
 
 
         <Route
@@ -227,10 +243,6 @@ function App() {
 
         {/* ================= ADMIN ================= */}
 
-        <Route
-          path="/admin"
-          element={<Admin />}
-        />
 
         <Route
           path="/admin/create-shipment"

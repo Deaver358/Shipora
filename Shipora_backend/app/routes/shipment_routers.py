@@ -41,42 +41,84 @@ async def _send_shipment_email(email: str, shipment):
 
 
 @router.post("", response_model=ShipmentDetailResponse, status_code=status.HTTP_201_CREATED)
-async def create_shipment(data: ShipmentCreate, bg: BackgroundTasks, user: User = Depends(get_this_user), session: AsyncSession = Depends(session)):
-    shipment = await shipment_service.create_shipment(user.uid, data, session)
-    bg.add_task(_send_shipment_email, user.email, shipment)
-    return shipment
+async def create_shipment(
+    data: ShipmentCreate,
+    user: User = Depends(get_this_user),
+    session: AsyncSession = Depends(session),
+):
+    return await shipment_service.create_shipment(
+        user.uid,
+        data,
+        session,
+    )
 
 
 @router.post("/{shipment_id}/pay", response_model=ShipmentDetailResponse)
-async def pay_for_shipment(shipment_id: uuid.UUID, user: User = Depends(get_this_user), session: AsyncSession = Depends(session)):
-    return await shipment_service.pay_from_wallet(shipment_id, user.uid, session)
+async def pay_for_shipment(
+    shipment_id: uuid.UUID,
+    bg: BackgroundTasks,
+    user: User = Depends(get_this_user),
+    session: AsyncSession = Depends(session),
+):
+    shipment = await shipment_service.pay_from_wallet(
+        shipment_id,
+        user.uid,
+        session,
+    )
+
+    bg.add_task(
+        _send_shipment_email,
+        user.email,
+        shipment,
+    )
+
+    return shipment
 
 
 @router.post("/paystack/webhook")
-async def paystack_webhook(request: Request, session: AsyncSession = Depends(session), x_paystack_signature: str | None = Header(default=None)):
+async def paystack_webhook(
+    request: Request,
+    session: AsyncSession = Depends(session),
+    x_paystack_signature: str | None = Header(default=None),
+):
     raw = await request.body()
-    if not paystack.verify_webhook_signature(raw, x_paystack_signature):
-        raise HTTPException(401, "Invalid Paystack signature.")
+
+    if not paystack.verify_webhook_signature(
+        raw,
+        x_paystack_signature,
+    ):
+        raise HTTPException(
+            status.HTTP_401_UNAUTHORIZED,
+            "Invalid Paystack signature.",
+        )
+
     payload = json.loads(raw.decode("utf-8"))
     event = payload.get("event")
     data = payload.get("data") or {}
     reference = data.get("reference", "")
-    if event == "charge.success" and reference.startswith("SHP-HOLD-"):
-        shipment_id = uuid.UUID(reference.removeprefix("SHP-HOLD-"))
-        await shipment_service.confirm_payment_and_open(shipment_id, session)
-    elif event == "charge.success" and reference.startswith("SHP-TOPUP-"):
+
+    if event == "charge.success" and reference.startswith("SHP-TOPUP-"):
         from app.services.wallet_services import WalletService
         from app.services.notification_services import NotificationService
         from app.models.notification_model import NotificationType
 
-        txn = await WalletService().confirm_topup(reference, session)
+        txn = await WalletService().confirm_topup(
+            reference,
+            session,
+        )
+
         await NotificationService().notify(
-            user_id=txn.user_id, type=NotificationType.PAYMENT, title="Wallet topped up",
-            message=f"₦{txn.amount / 100:,.2f} was added to your Shipora balance.",
+            user_id=txn.user_id,
+            type=NotificationType.PAYMENT,
+            title="Wallet topped up",
+            message=(
+                f"₦{txn.amount / 100:,.2f} "
+                "was added to your Shipora balance."
+            ),
             session=session,
         )
-    return {"received": True}
 
+    return {"received": True}
 
 @router.get("/jobs", response_model=list[ShipmentJobResponse])
 async def list_open_jobs(user: User = Depends(get_this_user), session: AsyncSession = Depends(session)):
@@ -154,6 +196,18 @@ async def mark_in_transit(shipment_id: uuid.UUID, user: User = Depends(get_this_
 @router.post("/{shipment_id}/location", response_model=ShipmentDetailResponse)
 async def update_location(shipment_id: uuid.UUID, data: LocationUpdate, user: User = Depends(get_this_user), session: AsyncSession = Depends(session)):
     return await shipment_service.update_location(shipment_id, user.uid, data, session)
+
+@router.post("/{shipment_id}/out-for-delivery", response_model=ShipmentDetailResponse)
+async def mark_out_for_delivery(
+    shipment_id: uuid.UUID,
+    user: User = Depends(get_this_user),
+    session: AsyncSession = Depends(session),
+):
+    return await shipment_service.mark_out_for_delivery(
+        shipment_id,
+        user.uid,
+        session,
+    )
 
 
 @router.post("/{shipment_id}/delivered", response_model=ShipmentDetailResponse)
