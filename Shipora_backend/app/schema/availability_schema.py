@@ -1,7 +1,9 @@
 import uuid
+
 from datetime import datetime
 from typing import Optional
-from pydantic import BaseModel, ConfigDict, Field
+
+from pydantic import BaseModel, ConfigDict
 
 
 class AvailabilityCreate(BaseModel):
@@ -17,6 +19,12 @@ class AvailabilityCreate(BaseModel):
 class AvailabilityResponse(BaseModel):
     availability_id: uuid.UUID
     dispatcher_id: uuid.UUID
+
+    dispatcher_name: str
+    dispatcher_rating: float = 0
+    dispatcher_total_ratings: int = 0
+    dispatcher_verified: bool = False
+
     operating_state: str
     operating_city: str
     service_area: str
@@ -26,4 +34,5 @@ class AvailabilityResponse(BaseModel):
     is_active: bool
     note: Optional[str] = None
     created_at: datetime
+
     model_config = ConfigDict(from_attributes=True)

@@ -4,6 +4,7 @@ import { api } from "../interceptors/api";
 import AuthStatusModal from "../components/AuthStatusModal";
 import "../index.css";
 import logo from "../assets/shipora-logo.jpeg";
+import { supabase } from "../supabaseClient";
 
 function Signup() {
   const navigate = useNavigate();

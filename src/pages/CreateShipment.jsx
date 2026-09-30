@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../interceptors/api";
 import "../index.css";
 
 const API_URL =
@@ -100,115 +101,84 @@ function CreateShipment() {
     setShowSummary(true);
   };
 
-  const createAndPayShipment = async () => {
-    setError("");
-    setCreating(true);
+const createAndPayShipment = async () => {
+  setError("");
+  setCreating(true);
 
-    try {
-      if (form.paymentBy !== "vendor") {
-        throw new Error(
-          "The vendor must pay for the shipment."
-        );
-      }
-
-      if (!form.media.length) {
-        throw new Error(
-          "Please upload at least one shipment image."
-        );
-      }
-
-      const media = await Promise.all(
-        form.media.map((file) => fileToDataUrl(file))
-      );
-
-      const createPayload = {
-        item_name: form.itemName.trim(),
-        description: form.description.trim(),
-        media,
-        pickup: form.pickup.trim(),
-        destination: form.destination.trim(),
-        recipient_name: form.recipientName.trim(),
-        recipient_phone: form.recipientPhone.trim(),
-        vehicle_preference: form.vehiclePreference,
-        note: form.note.trim() || null,
-        payment_by: "vendor",
-        delivery_amount: Number(form.deliveryAmount),
-      };
-
-      const createResponse = await fetch(
-        `${API_URL}/shipments`,
-        {
-          method: "POST",
-          credentials: "include",
-          headers: {
-            "Content-Type": "application/json",
-          },
-          body: JSON.stringify(createPayload),
-        }
-      );
-
-      let createData = null;
-
-      try {
-        createData = await createResponse.json();
-      } catch {
-        createData = null;
-      }
-
-      if (!createResponse.ok) {
-        throw new Error(
-          createData?.detail ||
-            createData?.message ||
-            "Unable to create shipment."
-        );
-      }
-
-      setCreatedShipment(createData);
-      setCreating(false);
-      setPaying(true);
-
-      const paymentResponse = await fetch(
-        `${API_URL}/shipments/${createData.shipment_id}/pay`,
-        {
-          method: "POST",
-          credentials: "include",
-        }
-      );
-
-      let paymentData = null;
-
-      try {
-        paymentData = await paymentResponse.json();
-      } catch {
-        paymentData = null;
-      }
-
-      if (!paymentResponse.ok) {
-        throw new Error(
-          paymentData?.detail ||
-            paymentData?.message ||
-            "Shipment was created, but wallet payment could not be completed."
-        );
-      }
-
-      setShowSummary(false);
-
-      navigate("/Myshipments", {
-        state: {
-          shipment: paymentData,
-          paymentSuccessful: true,
-        },
-      });
-    } catch (err) {
-      setError(
-        err?.message ||
-          "Something went wrong. Please try again."
-      );
-    } finally {
-      setCreating(false);
-      setPaying(false);
+  try {
+    if (form.paymentBy !== "vendor") {
+      throw new Error("The vendor must pay for the shipment.");
     }
-  };
+
+    if (!form.media.length) {
+      throw new Error("Please upload at least one shipment image.");
+    }
+
+    const media = await Promise.all(
+      form.media.map((file) => fileToDataUrl(file))
+    );
+
+    const createPayload = {
+      item_name: form.itemName.trim(),
+      description: form.description.trim(),
+      media,
+      pickup: form.pickup.trim(),
+      destination: form.destination.trim(),
+      recipient_name: form.recipientName.trim(),
+      recipient_phone: form.recipientPhone.trim(),
+      vehicle_preference: form.vehiclePreference,
+      note: form.note.trim() || null,
+      payment_by: "vendor",
+      delivery_amount: Number(form.deliveryAmount),
+    };
+
+    // 1. CREATE SHIPMENT
+    const { data: createdShipment } = await api.post(
+      "shipments",
+      createPayload
+    );
+
+    setCreatedShipment(createdShipment);
+
+    // 2. CHARGE SHIPORA WALLET
+    setCreating(false);
+    setPaying(true);
+
+    const { data: paidShipment } = await api.post(
+      `shipments/${createdShipment.shipment_id}/pay`
+    );
+
+    // 3. PAYMENT SUCCESSFUL
+    setShowSummary(false);
+
+    navigate("/MyShipments", {
+      state: {
+        shipment: paidShipment,
+        paymentSuccessful: true,
+      },
+    });
+  } catch (err) {
+    console.error("Create/payment error:", err);
+
+    const message =
+      err?.response?.data?.detail ||
+      err?.response?.data?.message ||
+      err?.message ||
+      "Something went wrong. Please try again.";
+
+    const finalMessage = Array.isArray(message)
+      ? message.map((item) => item.msg).join(", ")
+      : message;
+
+    setError(finalMessage);
+
+    // If wallet/payment failed, keep the review modal open.
+    setShowSummary(true);
+  } finally {
+    setCreating(false);
+    setPaying(false);
+  }
+};
 
   const isProcessing = creating || paying;
 

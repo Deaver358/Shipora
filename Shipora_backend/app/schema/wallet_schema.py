@@ -15,6 +15,7 @@ class WalletBalanceResponse(BaseModel):
     total_withdrawn: float
     pending_withdrawal: float
     available_balance: float
+    held_for_delivery: float = 0
 
 
 class WalletTransactionResponse(BaseModel):

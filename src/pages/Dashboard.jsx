@@ -6,9 +6,6 @@ import "../index.css";
 function Dashboard() {
   const navigate = useNavigate();
 
-  const [showDeposit, setShowDeposit] = useState(false);
-  const [showWithdraw, setShowWithdraw] = useState(false);
-
   // ================= WALLET STATE =================
 
   const [balance, setBalance] = useState(0);
@@ -20,11 +17,13 @@ function Dashboard() {
 
   const currency = "₦";
 
-  // ================= BACKEND WALLET CONNECTION =================
-  // Replace API_BASE_URL with your backend URL when connecting.
+  // ================= BACKEND =================
 
   const API_BASE_URL =
-    import.meta.env.VITE_API_URL || "http://localhost:8000";
+    import.meta.env.VITE_API_URL ||
+    "http://localhost:8000/api/v1.0";
+
+  // ================= LOAD WALLET =================
 
   useEffect(() => {
     const loadWallet = async () => {
@@ -32,16 +31,7 @@ function Dashboard() {
         setWalletLoading(true);
         setWalletError("");
 
-        /*
-         * GET /wallet/balance
-         *
-         * Expected backend response example:
-         *
-         * {
-         *   balance: 125000,
-         *   held_for_delivery: 25000
-         * }
-         */
+        // ---------------- BALANCE ----------------
 
         const balanceResponse = await fetch(
           `${API_BASE_URL}/wallet/balance`,
@@ -51,34 +41,52 @@ function Dashboard() {
           }
         );
 
-        if (!balanceResponse.ok) {
-          throw new Error("Unable to load wallet balance.");
+        let balanceData = null;
+
+        try {
+          balanceData = await balanceResponse.json();
+        } catch {
+          balanceData = null;
         }
 
-        const balanceData = await balanceResponse.json();
-
-        setBalance(Number(balanceData.balance || 0));
-        setHeldForDelivery(
-          Number(balanceData.held_for_delivery || 0)
-        );
-
+        if (!balanceResponse.ok) {
+          throw new Error(
+            balanceData?.detail ||
+              "Unable to load wallet balance."
+          );
+        }
 
         /*
-         * GET /wallet/transactions
+         * Actual backend response:
          *
-         * Expected backend response example:
-         *
-         * [
-         *   {
-         *     id: "123",
-         *     type: "deposit",
-         *     title: "Wallet Deposit",
-         *     amount: 50000,
-         *     date: "2026-09-26",
-         *     status: "Completed"
-         *   }
-         * ]
+         * {
+         *   total_topped_up,
+         *   total_earned,
+         *   total_refunded,
+         *   total_spent,
+         *   total_withdrawn,
+         *   pending_withdrawal,
+         *   available_balance
+         * }
          */
+
+        setBalance(
+          Number(balanceData?.available_balance || 0)
+        );
+
+        /*
+         * The current backend does not return a true
+         * held_for_delivery value.
+         *
+         * Do NOT use total_spent for this because
+         * total_spent is historical ESCROW_HOLD activity,
+         * not the current amount still being held.
+         */
+        setHeldForDelivery(
+          Number(balanceData?.held_for_delivery || 0)
+        );
+
+        // ---------------- TRANSACTIONS ----------------
 
         const transactionsResponse = await fetch(
           `${API_BASE_URL}/wallet/transactions`,
@@ -88,31 +96,38 @@ function Dashboard() {
           }
         );
 
-        if (!transactionsResponse.ok) {
-          throw new Error("Unable to load transactions.");
+        let transactionsData = null;
+
+        try {
+          transactionsData =
+            await transactionsResponse.json();
+        } catch {
+          transactionsData = null;
         }
 
-        const transactionsData =
-          await transactionsResponse.json();
+        if (!transactionsResponse.ok) {
+          throw new Error(
+            transactionsData?.detail ||
+              "Unable to load transactions."
+          );
+        }
 
         setTransactions(
           Array.isArray(transactionsData)
             ? transactionsData
-            : transactionsData.transactions || []
+            : transactionsData?.transactions || []
         );
-
       } catch (error) {
         console.error("Wallet loading error:", error);
 
         setWalletError(
-          "Unable to load wallet information."
+          error?.message ||
+            "Unable to load wallet information."
         );
 
-        // Keep dashboard usable while backend is being connected.
         setBalance(0);
         setHeldForDelivery(0);
         setTransactions([]);
-
       } finally {
         setWalletLoading(false);
       }
@@ -121,8 +136,111 @@ function Dashboard() {
     loadWallet();
   }, [API_BASE_URL]);
 
+  // ================= HELPERS =================
+
   const formatAmount = (amount) =>
-    `${currency}${Number(amount || 0).toLocaleString()}`;
+    `${currency}${Number(amount || 0).toLocaleString(
+      "en-NG",
+      {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }
+    )}`;
+
+  const formatDate = (date) => {
+    if (!date) return "";
+
+    const parsedDate = new Date(date);
+
+    if (Number.isNaN(parsedDate.getTime())) {
+      return String(date);
+    }
+
+    return parsedDate.toLocaleDateString("en-NG", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  const getTransactionDetails = (transaction) => {
+    const type = String(
+      transaction?.type || ""
+    ).toUpperCase();
+
+    switch (type) {
+      case "TOPUP":
+        return {
+          title: "Wallet Deposit",
+          icon: "+",
+          direction: "credit",
+        };
+
+      case "ESCROW_HOLD":
+        return {
+          title: "HELD FOR DELIVERY",
+          icon: "−",
+          direction: "debit",
+        };
+
+      case "ESCROW_RELEASE":
+        return {
+          title: "Delivery Payment",
+          icon: "+",
+          direction: "credit",
+        };
+
+      case "REFUND":
+        return {
+          title: "Shipment Refund",
+          icon: "+",
+          direction: "credit",
+        };
+
+      case "PLATFORM_COMMISSION":
+        return {
+          title: "Platform Commission",
+          icon: "−",
+          direction: "debit",
+        };
+
+      case "WITHDRAWAL":
+        return {
+          title: "Withdrawal",
+          icon: "−",
+          direction: "debit",
+        };
+
+      default:
+        return {
+          title: "Transaction",
+          icon: "−",
+          direction: "debit",
+        };
+    }
+  };
+
+  const formatStatus = (status) => {
+    if (!status) return "Pending";
+
+    const value = String(status).toLowerCase();
+
+    if (value === "success") {
+      return "Completed";
+    }
+
+    if (value === "pending") {
+      return "Pending";
+    }
+
+    if (value === "failed") {
+      return "Failed";
+    }
+
+    return String(status);
+  };
+
+  // ================= RENDER =================
 
   return (
     <div className="dashboard-page">
@@ -156,30 +274,45 @@ function Dashboard() {
         <section className="dashboard-balance-card">
 
           <div className="dashboard-balance-top">
-            <span>AVAILABLE BALANCE</span>
+
+            <span>
+              AVAILABLE BALANCE
+            </span>
 
             <span className="dashboard-balance-status">
               ACTIVE
             </span>
+
           </div>
 
+
           <strong className="dashboard-balance-amount">
+
             {walletLoading
               ? "Loading..."
               : formatAmount(balance)}
+
           </strong>
+
 
           <div className="dashboard-held">
 
             <div>
-              <span>HELD FOR DELIVERY</span>
+
+              <span>
+                HELD FOR DELIVERY
+              </span>
 
               <strong>
+
                 {walletLoading
                   ? "Loading..."
                   : formatAmount(heldForDelivery)}
+
               </strong>
+
             </div>
+
 
             <p>
               Funds reserved for active deliveries.
@@ -194,7 +327,10 @@ function Dashboard() {
 
         {walletError && (
 
-          <div className="dashboard-wallet-error">
+          <div
+            className="dashboard-wallet-error"
+            role="alert"
+          >
             {walletError}
           </div>
 
@@ -208,40 +344,62 @@ function Dashboard() {
           <button
             type="button"
             className="dashboard-action dashboard-deposit"
-            onClick={() => setShowDeposit(true)}
+            onClick={() => navigate("/top-up")}
           >
+
             <span className="dashboard-action-icon">
               +
             </span>
 
+
             <div>
-              <strong>Deposit</strong>
-              <small>Add funds to your balance</small>
+
+              <strong>
+                Deposit
+              </strong>
+
+              <small>
+                Add funds to your balance
+              </small>
+
             </div>
+
 
             <span className="dashboard-action-arrow">
               →
             </span>
+
           </button>
 
 
           <button
             type="button"
-            className="dashboard-action"
-            onClick={() => setShowWithdraw(true)}
+            className="dashboard-action dashboard-withdraw"
+            onClick={() => navigate("/withdraw")}
           >
+
             <span className="dashboard-action-icon">
               ↗
             </span>
 
+
             <div>
-              <strong>Withdraw</strong>
-              <small>Move available funds out</small>
+
+              <strong>
+                Withdraw
+              </strong>
+
+              <small>
+                Move available funds out
+              </small>
+
             </div>
+
 
             <span className="dashboard-action-arrow">
               →
             </span>
+
           </button>
 
         </section>
@@ -254,8 +412,15 @@ function Dashboard() {
           <div className="dashboard-section-heading">
 
             <div>
-              <span>ACCOUNT ACTIVITY</span>
-              <h1>Transaction History</h1>
+
+              <span>
+                ACCOUNT ACTIVITY
+              </span>
+
+              <h1>
+                Transaction History
+              </h1>
+
             </div>
 
           </div>
@@ -301,68 +466,70 @@ function Dashboard() {
 
               {transactions.map((transaction) => {
 
-                const transactionType =
-                  String(transaction.type || "")
-                    .toLowerCase();
+                const details =
+                  getTransactionDetails(
+                    transaction
+                  );
 
-                const isDeposit =
-                  transactionType === "deposit" ||
-                  transactionType === "credit" ||
-                  transactionType === "topup" ||
-                  transactionType === "top_up";
-
-                const isHeld =
-                  transactionType === "held" ||
-                  transactionType === "held_for_delivery";
+                const transactionId =
+                  transaction?.transaction_id ||
+                  transaction?.id ||
+                  `${transaction?.type}-${transaction?.created_at}`;
 
                 return (
 
                   <div
                     className="dashboard-transaction"
-                    key={transaction.id}
+                    key={transactionId}
                   >
 
                     <div className="dashboard-transaction-icon">
-                      {isDeposit ? "+" : "−"}
+
+                      {details.icon}
+
                     </div>
+
 
                     <div className="dashboard-transaction-info">
 
                       <strong>
-                        {isHeld
-                          ? "HELD FOR DELIVERY"
-                          : transaction.title ||
-                            transaction.description ||
-                            "Transaction"}
+                        {details.title}
                       </strong>
 
                       <span>
-                        {transaction.date ||
-                          transaction.created_at ||
-                          ""}
+                        {formatDate(
+                          transaction?.created_at
+                        )}
                       </span>
 
                     </div>
+
 
                     <div className="dashboard-transaction-amount">
 
                       <strong
                         className={
-                          isDeposit
+                          details.direction === "credit"
                             ? "credit"
                             : "debit"
                         }
                       >
-                        {isDeposit ? "+" : "−"}
+
+                        {details.direction === "credit"
+                          ? "+"
+                          : "−"}
 
                         {formatAmount(
-                          transaction.amount
+                          transaction?.amount
                         )}
+
                       </strong>
 
+
                       <span>
-                        {transaction.status ||
-                          "Completed"}
+                        {formatStatus(
+                          transaction?.status
+                        )}
                       </span>
 
                     </div>
@@ -381,168 +548,86 @@ function Dashboard() {
       </main>
 
 
-      {/* ================= DEPOSIT MODAL ================= */}
-
-      {showDeposit && (
-
-        <div
-          className="dashboard-modal-overlay"
-          onClick={() => setShowDeposit(false)}
-        >
-
-          <div
-            className="dashboard-modal"
-            onClick={(event) =>
-              event.stopPropagation()
-            }
-          >
-
-            <button
-              type="button"
-              className="dashboard-modal-close"
-              onClick={() => setShowDeposit(false)}
-            >
-              ×
-            </button>
-
-            <span>ACCOUNT FUNDING</span>
-
-            <h2>
-              Deposit funds
-            </h2>
-
-            <p>
-              Add funds to your Shipora balance
-              for future delivery payments.
-            </p>
-
-            <button
-              type="button"
-              className="dashboard-modal-primary"
-              onClick={() => setShowDeposit(false)}
-            >
-              Continue
-              <span>→</span>
-            </button>
-
-          </div>
-
-        </div>
-
-      )}
-
-
-      {/* ================= WITHDRAW MODAL ================= */}
-
-      {showWithdraw && (
-
-        <div
-          className="dashboard-modal-overlay"
-          onClick={() => setShowWithdraw(false)}
-        >
-
-          <div
-            className="dashboard-modal"
-            onClick={(event) =>
-              event.stopPropagation()
-            }
-          >
-
-            <button
-              type="button"
-              className="dashboard-modal-close"
-              onClick={() => setShowWithdraw(false)}
-            >
-              ×
-            </button>
-
-            <span>ACCOUNT WITHDRAWAL</span>
-
-            <h2>
-              Withdraw funds
-            </h2>
-
-            <p>
-              Withdraw funds from your available
-              Shipora balance.
-            </p>
-
-            <button
-              type="button"
-              className="dashboard-modal-primary"
-              onClick={() => setShowWithdraw(false)}
-            >
-              Continue
-              <span>→</span>
-            </button>
-
-          </div>
-
-        </div>
-
-      )}
-
-
       {/* ================= BOTTOM NAVIGATION ================= */}
 
       <nav className="bottom-nav">
 
         <button
+          type="button"
           className="bottom-nav-item"
           onClick={() => navigate("/home")}
         >
+
           <svg viewBox="0 0 24 24" fill="none">
+
             <path
               d="M3 10.5L12 3L21 10.5V21H3V10.5Z"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinejoin="round"
             />
+
             <path
               d="M9 21V14H15V21"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinejoin="round"
             />
+
           </svg>
 
-          <span>Home</span>
+          <span>
+            Home
+          </span>
+
         </button>
 
 
         <button
+          type="button"
           className="bottom-nav-item"
           onClick={() => navigate("/shipments")}
         >
+
           <svg viewBox="0 0 24 24" fill="none">
+
             <path
               d="M4 7.5L12 3L20 7.5V16.5L12 21L4 16.5V7.5Z"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinejoin="round"
             />
+
             <path
               d="M4 7.5L12 12L20 7.5"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinejoin="round"
             />
+
             <path
               d="M12 12V21"
               stroke="currentColor"
               strokeWidth="1.8"
             />
+
           </svg>
 
-          <span>Shipments</span>
+          <span>
+            Shipments
+          </span>
+
         </button>
 
 
         <button
+          type="button"
           className="bottom-nav-item"
           onClick={() => navigate("/tracking")}
         >
+
           <svg viewBox="0 0 24 24" fill="none">
+
             <circle
               cx="12"
               cy="12"
@@ -550,6 +635,7 @@ function Dashboard() {
               stroke="currentColor"
               strokeWidth="1.8"
             />
+
             <path
               d="M12 7V12L15.5 14"
               stroke="currentColor"
@@ -557,44 +643,58 @@ function Dashboard() {
               strokeLinecap="round"
               strokeLinejoin="round"
             />
+
           </svg>
 
-          <span>Tracking</span>
+          <span>
+            Tracking
+          </span>
+
         </button>
 
 
         <button
+          type="button"
           className="bottom-nav-item active"
           onClick={() => navigate("/dashboard")}
         >
+
           <svg viewBox="0 0 24 24" fill="none">
+
             <path
               d="M4 19V11"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinecap="round"
             />
+
             <path
               d="M10 19V5"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinecap="round"
             />
+
             <path
               d="M16 19V9"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinecap="round"
             />
+
             <path
               d="M22 19V3"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinecap="round"
             />
+
           </svg>
 
-          <span>Dashboard</span>
+          <span>
+            Dashboard
+          </span>
+
         </button>
 
       </nav>

@@ -4,6 +4,7 @@ import { api } from "../interceptors/api";
 import AuthStatusModal from "../components/AuthStatusModal";
 import "../index.css";
 import logo from "../assets/shipora-logo.jpeg";
+import { supabase } from "../supabaseClient";
 
 function Login() {
   const navigate = useNavigate();
@@ -28,16 +29,13 @@ function Login() {
 
     try {
       const loginData = {
-        email: email,
-        password: password,
-      }
-      const { data, error: loginError } =
-        await api.post(`auth/sign_in/`, loginData)
-        console.log(data);
+        email,
+        password,
+      };
 
-      if (loginError) {
-        throw loginError;
-      }
+      const { data } = await api.post("auth/sign_in/", loginData);
+
+      console.log("Login response:", data);
 
       if (!data || !data.user_uid) {
         throw new Error(
@@ -48,7 +46,6 @@ function Login() {
       setModalType("loginSuccess");
     } catch (loginError) {
       console.error("Login error:", loginError);
-
       setModalType("error");
     } finally {
       setLoading(false);
@@ -92,23 +89,16 @@ function Login() {
 
         {/* Brand */}
         <Link to="/" className="auth-brand">
-
-          <img
-            src={logo}
-            alt="SHIPORA"
-          />
+          <img src={logo} alt="SHIPORA" />
 
           <div>
             <strong>SHIPORA</strong>
             <span>LOGISTICS &amp; FORWARDING</span>
           </div>
-
         </Link>
-
 
         {/* Heading */}
         <div className="auth-heading">
-
           <span>WELCOME BACK</span>
 
           <h1>Sign in to SHIPORA.</h1>
@@ -117,9 +107,7 @@ function Login() {
             Access your deliveries, shipments and
             SHIPORA services.
           </p>
-
         </div>
-
 
         {/* Login Form */}
         <form
@@ -129,7 +117,6 @@ function Login() {
 
           {/* Email */}
           <div className="auth-form-field">
-
             <label htmlFor="login-email">
               Email Address
             </label>
@@ -145,15 +132,12 @@ function Login() {
               autoComplete="email"
               required
             />
-
           </div>
-
 
           {/* Password */}
           <div className="auth-form-field">
 
             <div className="auth-label-row">
-
               <label htmlFor="login-password">
                 Password
               </label>
@@ -164,7 +148,6 @@ function Login() {
               >
                 Forgot password?
               </Link>
-
             </div>
 
             <input
@@ -178,9 +161,7 @@ function Login() {
               autoComplete="current-password"
               required
             />
-
           </div>
-
 
           {/* Sign In */}
           <button
@@ -188,23 +169,17 @@ function Login() {
             className="auth-primary-button"
             disabled={loading || googleLoading}
           >
-
-            {loading
-              ? "Signing In..."
-              : "Sign In"}
+            {loading ? "Signing In..." : "Sign In"}
 
             {!loading && <span>→</span>}
-
           </button>
 
         </form>
-
 
         {/* Divider */}
         <div className="auth-divider">
           <span>OR</span>
         </div>
-
 
         {/* Google Login */}
         <button
@@ -215,12 +190,10 @@ function Login() {
         >
 
           <span className="google-icon">
-
             <svg
               viewBox="0 0 24 24"
               aria-hidden="true"
             >
-
               <path
                 fill="#4285F4"
                 d="M21.35 12.27c0-.79-.07-1.55-.2-2.27H12v4.3h5.24a4.48 4.48 0 0 1-1.94 2.94v2.45h3.14c1.84-1.69 2.91-4.18 2.91-7.42Z"
@@ -240,35 +213,25 @@ function Login() {
                 fill="#EA4335"
                 d="M12 6.14c1.43 0 2.71.49 3.72 1.46l2.79-2.79C16.84 3.23 14.63 2.25 12 2.25A9.75 9.75 0 0 0 3.3 7.64l3.24 2.53C7.31 7.86 9.46 6.14 12 6.14Z"
               />
-
             </svg>
-
           </span>
 
           {googleLoading
             ? "Connecting to Google..."
             : "Continue with Google"}
-
         </button>
-
 
         {/* Signup */}
         <p className="auth-switch">
-
-          Don't have a SHIPORA account?
-
-          {" "}
+          Don't have a SHIPORA account?{" "}
 
           <Link to="/signup">
             Create account
           </Link>
-
         </p>
-
 
         {/* Legal */}
         <p className="auth-legal">
-
           By continuing, you agree to SHIPORA's{" "}
 
           <Link to="/terms">
@@ -280,23 +243,18 @@ function Login() {
           <Link to="/privacy">
             Privacy Policy
           </Link>.
-
         </p>
 
       </section>
 
-
       {/* Footer */}
       <footer className="auth-footer">
-
         <span>SHIPORA</span>
 
         <p>
           Logistics &amp; Forwarding
         </p>
-
       </footer>
-
 
       {/* Authentication Status Modal */}
       {modalType && (

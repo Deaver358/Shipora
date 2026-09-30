@@ -227,7 +227,7 @@ function Withdraw() {
           onClick={() => navigate("/dashboard")}
         >
           ← Back to Dashboard
-        </button>
+        </button> <br />
 
         <span className="page-eyebrow">
           ACCOUNT WITHDRAWAL

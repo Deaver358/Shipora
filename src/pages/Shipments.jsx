@@ -254,7 +254,7 @@ function Shipments() {
             type="button"
             className="shipment-quick-action"
             onClick={() =>
-              navigate("/Vendor")
+              navigate("/vendor")
             }
           >
 
@@ -285,7 +285,7 @@ function Shipments() {
             type="button"
             className="shipment-quick-action"
             onClick={() =>
-              navigate("/Dispatch")
+              navigate("/dispatch")
             }
           >
 

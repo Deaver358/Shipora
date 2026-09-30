@@ -28,7 +28,7 @@ import ShipmentDetails from "./pages/ShipmentDetails";
 import Tracking from "./pages/Tracking";
 import Dashboard from "./pages/Dashboard";
 import DispatchAvailability from "./pages/DispatchAvailability";
-
+import RoleProtectedRoute from "./routes/RoleProtectedRoute";
 import VerifyRole from "./pages/VerifyRole";
 import VerifyVendor from "./pages/VerifyVendor";
 import VerifyDispatch from "./pages/VerifyDispatch";
@@ -48,6 +48,8 @@ import Pending from "./pages/Pending";
 import Review from "./pages/Review";
 import Rejected from "./pages/Rejected";
 import Verified from "./pages/Verified";
+import VendorApplications from "./pages/VendorApplications";
+import DispatcherApplications from "./pages/DispatcherApplications";
 
 import "./index.css";
 import ChangePassword from "./pages/ChangePassword";
@@ -71,6 +73,15 @@ function App() {
 <Route path="/top-up" element={<TopUp />} />
 <Route path="/withdraw" element={<Withdraw />} />
 <Route path="/bank-account" element={<BankAccount />} />
+<Route
+  path="/vendor-applications"
+  element={<VendorApplications />}
+/>
+
+<Route
+  path="/dispatcher-applications"
+  element={<DispatcherApplications />}
+/>
 
         <Route
   path="/my-deliveries"
@@ -92,13 +103,22 @@ function App() {
   element={<FindDispatch />}
 />
 
-        <Route
-  path="/dispatch"
-  element={<Dispatch />}
+<Route
+    path="/vendor"
+    element={
+        <RoleProtectedRoute role="vendor">
+            <Vendor />
+        </RoleProtectedRoute>
+    }
 />
-        <Route
-  path="/vendor"
-  element={<Vendor />}
+
+<Route
+    path="/dispatch"
+    element={
+        <RoleProtectedRoute role="dispatcher">
+            <Dispatch />
+        </RoleProtectedRoute>
+    }
 />
 
         <Route path="/help" element={<Help />} /> 

@@ -318,6 +318,10 @@ class ShipmentService:
 
         return shipment
 
+    # ============================================================
+    # APPLICATIONS
+    # ============================================================
+
     async def apply_to_shipment(
         self,
         shipment_id,
@@ -384,7 +388,10 @@ class ShipmentService:
             user_id=shipment.vendor_id,
             type=NotificationType.APPLICATION,
             title="New dispatch application",
-            message=f"A dispatcher applied to carry '{shipment.item_name}'.",
+            message=(
+                f"A dispatcher applied to carry "
+                f"'{shipment.item_name}'."
+            ),
             session=session,
             shipment_id=shipment.shipment_id,
         )
@@ -459,12 +466,30 @@ class ShipmentService:
             user_id=dispatcher_user_id,
             type=NotificationType.DISPATCH,
             title="Delivery invitation",
-            message=f"A vendor invited you to carry '{shipment.item_name}'.",
+            message=(
+                f"A vendor invited you to carry "
+                f"'{shipment.item_name}'."
+            ),
             session=session,
             shipment_id=shipment.shipment_id,
         )
 
         return application
+
+    async def list_dispatcher_applications(
+        self,
+        dispatcher_user_id,
+        session,
+    ):
+        result = await session.execute(
+            select(Application)
+            .where(
+                Application.dispatcher_id == dispatcher_user_id
+            )
+            .order_by(Application.created_at.desc())
+        )
+
+        return result.scalars().all()
 
     async def list_applications_for_shipment(
         self,
@@ -480,7 +505,9 @@ class ShipmentService:
 
         result = await session.execute(
             select(Application)
-            .where(Application.shipment_id == shipment_id)
+            .where(
+                Application.shipment_id == shipment_id
+            )
             .order_by(Application.created_at.desc())
         )
 
@@ -557,7 +584,8 @@ class ShipmentService:
             type=NotificationType.APPLICATION,
             title="Application accepted",
             message=(
-                f"You've been assigned to deliver '{shipment.item_name}'. "
+                f"You've been assigned to deliver "
+                f"'{shipment.item_name}'. "
                 "Recipient details are now visible."
             ),
             session=session,
@@ -578,6 +606,193 @@ class ShipmentService:
             )
 
         return shipment
+
+    async def accept_dispatcher_invitation(
+        self,
+        application_id,
+        dispatcher_user_id,
+        session,
+    ):
+        result = await session.execute(
+            select(Application).where(
+                Application.application_id == application_id
+            )
+        )
+
+        application = result.scalar_one_or_none()
+
+        if not application:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                "Application not found.",
+            )
+
+        if application.dispatcher_id != dispatcher_user_id:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "This invitation isn't for you.",
+            )
+
+        if application.initiated_by != InitiatedBy.VENDOR:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This application is not a vendor invitation.",
+            )
+
+        if application.status != ApplicationStatus.PENDING:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This invitation is no longer pending.",
+            )
+
+        shipment = await self._get(
+            application.shipment_id,
+            session,
+        )
+
+        if shipment.status != ShipmentStatus.OPEN:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This shipment is no longer open.",
+            )
+
+        result = await session.execute(
+            select(Application).where(
+                Application.shipment_id == shipment.shipment_id,
+                Application.status == ApplicationStatus.PENDING,
+            )
+        )
+
+        rejected_dispatcher_ids = []
+
+        for row in result.scalars().all():
+            if row.application_id == application.application_id:
+                row.status = ApplicationStatus.ACCEPTED
+            else:
+                row.status = ApplicationStatus.REJECTED
+                rejected_dispatcher_ids.append(row.dispatcher_id)
+
+            row.updated_at = datetime.now(timezone.utc)
+            session.add(row)
+
+        shipment.dispatcher_id = dispatcher_user_id
+        shipment.status = ShipmentStatus.ASSIGNED
+        shipment.updated_at = datetime.now(timezone.utc)
+
+        session.add(shipment)
+
+        await session.commit()
+        await session.refresh(shipment)
+
+        await notification_service.notify(
+            user_id=shipment.vendor_id,
+            type=NotificationType.APPLICATION,
+            title="Dispatcher accepted invitation",
+            message=(
+                f"The dispatcher accepted your invitation for "
+                f"'{shipment.item_name}'."
+            ),
+            session=session,
+            shipment_id=shipment.shipment_id,
+        )
+
+        await notification_service.notify(
+            user_id=dispatcher_user_id,
+            type=NotificationType.APPLICATION,
+            title="Invitation accepted",
+            message=(
+                f"You accepted the delivery invitation for "
+                f"'{shipment.item_name}'. "
+                "Recipient details are now visible."
+            ),
+            session=session,
+            shipment_id=shipment.shipment_id,
+        )
+
+        for rejected_dispatcher_id in rejected_dispatcher_ids:
+            if rejected_dispatcher_id != dispatcher_user_id:
+                await notification_service.notify(
+                    user_id=rejected_dispatcher_id,
+                    type=NotificationType.APPLICATION,
+                    title="Application not selected",
+                    message=(
+                        f"The shipment '{shipment.item_name}' has been "
+                        "assigned to another dispatcher."
+                    ),
+                    session=session,
+                    shipment_id=shipment.shipment_id,
+                )
+
+        return shipment
+
+    async def decline_dispatcher_invitation(
+        self,
+        application_id,
+        dispatcher_user_id,
+        session,
+    ):
+        result = await session.execute(
+            select(Application).where(
+                Application.application_id == application_id
+            )
+        )
+
+        application = result.scalar_one_or_none()
+
+        if not application:
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                "Application not found.",
+            )
+
+        if application.dispatcher_id != dispatcher_user_id:
+            raise HTTPException(
+                status.HTTP_403_FORBIDDEN,
+                "This invitation isn't for you.",
+            )
+
+        if application.initiated_by != InitiatedBy.VENDOR:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "You can only decline vendor invitations.",
+            )
+
+        if application.status != ApplicationStatus.PENDING:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This invitation is no longer pending.",
+            )
+
+        application.status = ApplicationStatus.REJECTED
+        application.updated_at = datetime.now(timezone.utc)
+
+        session.add(application)
+
+        await session.commit()
+        await session.refresh(application)
+
+        shipment = await self._get(
+            application.shipment_id,
+            session,
+        )
+
+        await notification_service.notify(
+            user_id=shipment.vendor_id,
+            type=NotificationType.APPLICATION,
+            title="Invitation declined",
+            message=(
+                f"The dispatcher declined your invitation for "
+                f"'{shipment.item_name}'."
+            ),
+            session=session,
+            shipment_id=shipment.shipment_id,
+        )
+
+        return application
+
+    # ============================================================
+    # DELIVERY LIFECYCLE
+    # ============================================================
 
     async def mark_picked_up(
         self,
@@ -608,7 +823,10 @@ class ShipmentService:
             user_id=shipment.vendor_id,
             type=NotificationType.SHIPMENT,
             title="Item picked up",
-            message=f"Your dispatcher picked up '{shipment.item_name}'.",
+            message=(
+                f"Your dispatcher picked up "
+                f"'{shipment.item_name}'."
+            ),
             session=session,
             shipment_id=shipment.shipment_id,
         )
@@ -657,12 +875,12 @@ class ShipmentService:
     async def mark_out_for_delivery(
         self,
         shipment_id,
-        vendor_user_id,
+        dispatcher_user_id,
         session,
     ):
-        shipment = await self._get_owned_shipment(
+        shipment = await self._get_assigned_shipment(
             shipment_id,
-            vendor_user_id,
+            dispatcher_user_id,
             session,
         )
 
@@ -672,7 +890,7 @@ class ShipmentService:
         ):
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                "Shipment must be picked up before it can be marked out for delivery.",
+                "Shipment must be picked up or in transit before it can be marked out for delivery.",
             )
 
         shipment.status = ShipmentStatus.OUT_FOR_DELIVERY
@@ -683,7 +901,7 @@ class ShipmentService:
         )
 
         await notification_service.notify(
-            user_id=shipment.dispatcher_id,
+            user_id=shipment.vendor_id,
             type=NotificationType.SHIPMENT,
             title="Shipment out for delivery",
             message=(
@@ -733,7 +951,7 @@ class ShipmentService:
             message=(
                 f"'{shipment.item_name}' was marked delivered. "
                 f"Confirm or dispute within {AUTO_RELEASE_HOURS} hours, "
-                f"or payment auto-releases to the dispatcher."
+                "or payment auto-releases to the dispatcher."
             ),
             session=session,
             shipment_id=shipment.shipment_id,
@@ -774,6 +992,10 @@ class ShipmentService:
             session,
         )
 
+    # ============================================================
+    # TRACKING
+    # ============================================================
+
     async def public_tracking(
         self,
         tracking_number,
@@ -802,6 +1024,10 @@ class ShipmentService:
             "updated_at": shipment.location_updated_at,
             "destination": shipment.destination,
         }
+
+    # ============================================================
+    # DELIVERY CONFIRMATION / DISPUTES
+    # ============================================================
 
     async def confirm_delivery(
         self,
@@ -860,8 +1086,8 @@ class ShipmentService:
             type=NotificationType.DISPUTE,
             title="Delivery disputed",
             message=(
-                f"The vendor disputed '{shipment.item_name}': {reason}. "
-                "Payout is on hold pending admin review."
+                f"The vendor disputed '{shipment.item_name}': "
+                f"{reason}. Payout is on hold pending admin review."
             ),
             session=session,
             shipment_id=shipment.shipment_id,
@@ -965,6 +1191,10 @@ class ShipmentService:
 
         return shipment
 
+    # ============================================================
+    # CANCELLATION
+    # ============================================================
+
     async def cancel_shipment(
         self,
         shipment_id,
@@ -1043,6 +1273,10 @@ class ShipmentService:
             "Cancellation is not available after pickup. Contact admin/support.",
         )
 
+    # ============================================================
+    # DISPUTE RESOLUTION
+    # ============================================================
+
     async def _complete_and_refund_dispute(
         self,
         shipment,
@@ -1068,8 +1302,9 @@ class ShipmentService:
             type=NotificationType.DISPUTE,
             title="Dispute resolved: refunded",
             message=(
-                f"Admin resolved the dispute for '{shipment.item_name}' "
-                "in your favour. You've been refunded."
+                f"Admin resolved the dispute for "
+                f"'{shipment.item_name}' in your favour. "
+                "You've been refunded."
             ),
             session=session,
             shipment_id=shipment.shipment_id,
@@ -1080,14 +1315,18 @@ class ShipmentService:
             type=NotificationType.DISPUTE,
             title="Dispute resolved: refunded to vendor",
             message=(
-                f"Admin resolved the dispute for '{shipment.item_name}' "
-                "in the vendor's favour."
+                f"Admin resolved the dispute for "
+                f"'{shipment.item_name}' in the vendor's favour."
             ),
             session=session,
             shipment_id=shipment.shipment_id,
         )
 
         return shipment
+
+    # ============================================================
+    # INTERNAL HELPERS
+    # ============================================================
 
     async def _get(
         self,

@@ -3,7 +3,7 @@ import { useNavigate } from "react-router-dom";
 import AuthStatusModal from "../components/AuthStatusModal";
 import "../index.css";
 
-function VerifyBoth() {
+function VerifyDispatch() {
   const navigate = useNavigate();
 
   const [showModal, setShowModal] = useState(false);
@@ -699,4 +699,4 @@ function VerifyBoth() {
   );
 }
 
-export default VerifyBoth;
+export default VerifyDispatch;

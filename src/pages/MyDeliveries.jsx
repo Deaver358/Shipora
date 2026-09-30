@@ -1,5 +1,6 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../interceptors/api";
 import "../styles/change.css";
 
 function MyDeliveries() {
@@ -8,53 +9,157 @@ function MyDeliveries() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [filterOpen, setFilterOpen] = useState(false);
 
-  const deliveries = [
-    {
-      id: "DLV-2048-921",
-      item: "Electronics",
-      pickup: "Lekki Phase 1",
-      destination: "Yaba",
-      status: "Pending",
-      fee: 5000,
-      vehicle: "Motorcycle",
-      date: "Today",
-      image: null,
-    },
-    {
-      id: "DLV-2048-817",
-      item: "Documents",
-      pickup: "Victoria Island",
-      destination: "Ikeja",
-      status: "Assigned",
-      fee: 3500,
-      vehicle: "Motorcycle",
-      date: "Today",
-      image: null,
-    },
-    {
-      id: "DLV-2048-604",
-      item: "Fashion Items",
-      pickup: "Surulere",
-      destination: "Lekki",
-      status: "Delivered",
-      fee: 4500,
-      vehicle: "Van",
-      date: "Aug 20, 2026",
-      image: null,
-    },
-  ];
+  const [deliveries, setDeliveries] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    loadDeliveries();
+  }, []);
+
+  const loadDeliveries = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await api.get("shipments/deliveries");
+
+      const records = Array.isArray(response.data)
+        ? response.data
+        : [];
+
+      setDeliveries(records);
+    } catch (err) {
+      console.error("Failed to load deliveries:", err);
+
+      setError(
+        err.response?.data?.detail ||
+          "Unable to load your deliveries."
+      );
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const formatStatus = (status) => {
+    if (!status) return "Unknown";
+
+    return String(status)
+      .toLowerCase()
+      .split("_")
+      .map(
+        (word) =>
+          word.charAt(0).toUpperCase() + word.slice(1)
+      )
+      .join(" ");
+  };
+
+  const normalizeStatus = (status) => {
+    return String(status || "")
+      .toLowerCase()
+      .replace(/_/g, " ")
+      .trim();
+  };
+
+  const formatFee = (fee) => {
+    const amount = Number(fee || 0) / 100;
+
+    return amount.toLocaleString("en-NG", {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
+    });
+  };
+
+  const formatDate = (value) => {
+    if (!value) return "—";
+
+    const date = new Date(value);
+
+    if (Number.isNaN(date.getTime())) {
+      return "—";
+    }
+
+    const today = new Date();
+
+    const isToday =
+      date.getDate() === today.getDate() &&
+      date.getMonth() === today.getMonth() &&
+      date.getFullYear() === today.getFullYear();
+
+    if (isToday) {
+      return "Today";
+    }
+
+    return date.toLocaleDateString("en-NG", {
+      day: "numeric",
+      month: "short",
+      year: "numeric",
+    });
+  };
+
+  const getVehicle = (delivery) => {
+    return (
+      delivery.vehicle_preference ||
+      delivery.vehicle_type ||
+      "Not specified"
+    );
+  };
+
+  const getItem = (delivery) => {
+    return (
+      delivery.item_name ||
+      "Delivery"
+    );
+  };
+
+  const getPickup = (delivery) => {
+    return delivery.pickup || "Not specified";
+  };
+
+  const getDestination = (delivery) => {
+    return delivery.destination || "Not specified";
+  };
 
   const filteredDeliveries = useMemo(() => {
-    if (statusFilter === "all") return deliveries;
+    if (statusFilter === "all") {
+      return deliveries;
+    }
 
-    return deliveries.filter(
-      (delivery) =>
-        delivery.status.toLowerCase() === statusFilter
-    );
-  }, [statusFilter]);
+    return deliveries.filter((delivery) => {
+      const status = normalizeStatus(delivery.status);
+
+      return status === statusFilter;
+    });
+  }, [deliveries, statusFilter]);
 
   const statusClass = (status) =>
-    status.toLowerCase().replace(/\s+/g, "-");
+    String(status || "")
+      .toLowerCase()
+      .replace(/_/g, "-")
+      .replace(/\s+/g, "-");
+
+  const pendingCount = deliveries.filter((delivery) => {
+    const status = normalizeStatus(delivery.status);
+
+    return (
+      status === "pending" ||
+      status === "pending payment"
+    );
+  }).length;
+
+  const assignedCount = deliveries.filter((delivery) => {
+    return normalizeStatus(delivery.status) === "assigned";
+  }).length;
+
+  const deliveredCount = deliveries.filter((delivery) => {
+    return normalizeStatus(delivery.status) === "delivered";
+  }).length;
+
+  const totalFees = deliveries.reduce(
+    (total, delivery) =>
+      total + Number(delivery.delivery_fee || 0),
+    0
+  );
 
   const filterOptions = [
     { value: "all", label: "All Deliveries" },
@@ -73,7 +178,7 @@ function MyDeliveries() {
         >
           ←
         </button>
-        
+
         <div>
           <span className="my-deliveries-eyebrow">
             DISPATCH MANAGEMENT
@@ -100,32 +205,23 @@ function MyDeliveries() {
 
         <div>
           <span>PENDING</span>
-          <strong>
-            {deliveries.filter((d) => d.status === "Pending").length}
-          </strong>
+          <strong>{pendingCount}</strong>
         </div>
 
         <div>
           <span>ASSIGNED</span>
-          <strong>
-            {deliveries.filter((d) => d.status === "Assigned").length}
-          </strong>
+          <strong>{assignedCount}</strong>
         </div>
 
         <div>
           <span>DELIVERED</span>
-          <strong>
-            {deliveries.filter((d) => d.status === "Delivered").length}
-          </strong>
+          <strong>{deliveredCount}</strong>
         </div>
 
         <div>
           <span>DELIVERY FEES</span>
           <strong>
-            ₦
-            {deliveries
-              .reduce((total, delivery) => total + delivery.fee, 0)
-              .toLocaleString()}
+            ₦{formatFee(totalFees)}
           </strong>
         </div>
 
@@ -183,13 +279,37 @@ function MyDeliveries() {
 
       <main className="my-deliveries-list">
 
-        {filteredDeliveries.length > 0 ? (
+        {loading ? (
+          <div className="my-deliveries-empty">
+            <div>🚚</div>
+
+            <h3>Loading deliveries...</h3>
+
+            <p>
+              Getting your assigned deliveries.
+            </p>
+          </div>
+        ) : error ? (
+          <div className="my-deliveries-empty">
+            <div>⚠️</div>
+
+            <h3>Unable to load deliveries</h3>
+
+            <p>{error}</p>
+
+            <button onClick={loadDeliveries}>
+              Try Again
+            </button>
+          </div>
+        ) : filteredDeliveries.length > 0 ? (
           filteredDeliveries.map((delivery) => (
             <article
               className="my-delivery-card"
-              key={delivery.id}
+              key={delivery.shipment_id}
               onClick={() =>
-                navigate(`/delivery-details/${delivery.id}`)
+                navigate(
+                  `/delivery-details/${delivery.shipment_id}`
+                )
               }
             >
 
@@ -200,8 +320,14 @@ function MyDeliveries() {
                 </div>
 
                 <div className="my-delivery-title">
-                  <span>{delivery.id}</span>
-                  <h3>{delivery.item}</h3>
+                  <span>
+                    {delivery.tracking_number ||
+                      delivery.shipment_id}
+                  </span>
+
+                  <h3>
+                    {getItem(delivery)}
+                  </h3>
                 </div>
 
                 <span
@@ -210,7 +336,8 @@ function MyDeliveries() {
                   )}`}
                 >
                   <i></i>
-                  {delivery.status}
+
+                  {formatStatus(delivery.status)}
                 </span>
 
               </div>
@@ -222,7 +349,10 @@ function MyDeliveries() {
 
                   <div>
                     <small>PICKUP AREA</small>
-                    <strong>{delivery.pickup}</strong>
+
+                    <strong>
+                      {getPickup(delivery)}
+                    </strong>
                   </div>
                 </div>
 
@@ -233,7 +363,10 @@ function MyDeliveries() {
 
                   <div>
                     <small>DESTINATION AREA</small>
-                    <strong>{delivery.destination}</strong>
+
+                    <strong>
+                      {getDestination(delivery)}
+                    </strong>
                   </div>
                 </div>
 
@@ -243,27 +376,35 @@ function MyDeliveries() {
 
                 <div>
                   <span>DELIVERY FEE</span>
+
                   <strong>
-                    ₦{delivery.fee.toLocaleString()}
+                    ₦{formatFee(delivery.delivery_fee)}
                   </strong>
                 </div>
 
                 <div>
                   <span>VEHICLE</span>
-                  <strong>{delivery.vehicle}</strong>
+
+                  <strong>
+                    {getVehicle(delivery)}
+                  </strong>
                 </div>
 
                 <div>
                   <span>DATE</span>
-                  <strong>{delivery.date}</strong>
+
+                  <strong>
+                    {formatDate(delivery.created_at)}
+                  </strong>
                 </div>
 
                 <button
                   type="button"
                   onClick={(event) => {
                     event.stopPropagation();
+
                     navigate(
-                      `/delivery-details/${delivery.id}`
+                      `/delivery-details/${delivery.shipment_id}`
                     );
                   }}
                 >
@@ -317,6 +458,7 @@ function MyDeliveries() {
         </button>
 
       </section>
+
       {/* ================= BOTTOM NAV ================= */}
 
       <nav className="bottom-nav">
@@ -345,7 +487,6 @@ function MyDeliveries() {
 
           <span>Home</span>
         </button>
-
 
         <button
           className="bottom-nav-item active"
@@ -378,7 +519,6 @@ function MyDeliveries() {
           <span>Shipments</span>
         </button>
 
-
         <button
           className="bottom-nav-item"
           onClick={() => navigate("/tracking")}
@@ -405,7 +545,6 @@ function MyDeliveries() {
 
           <span>Tracking</span>
         </button>
-
 
         <button
           className="bottom-nav-item"
@@ -447,7 +586,6 @@ function MyDeliveries() {
         </button>
 
       </nav>
-
 
     </div>
   );

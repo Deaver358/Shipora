@@ -21541,3 +21541,645 @@ padding: 16px;
   }
 }
 
+/* =========================================================
+   MY SHIPMENTS — SUMMARY CARDS
+   ========================================================= */
+
+.shipment-summary-row {
+  width: 100%;
+  max-width: 1180px;
+  margin: 0 auto 24px;
+  padding: 0 24px;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.shipment-summary-card {
+  position: relative;
+  min-height: 125px;
+  padding: 24px 26px;
+  background: #ffffff;
+  border: 1px solid #e5edf2;
+  border-radius: 18px;
+  box-shadow: 0 8px 28px rgba(17, 34, 51, 0.06);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  overflow: hidden;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease;
+}
+
+.shipment-summary-card::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 4px;
+  height: 100%;
+  background: #2d9fd4;
+}
+
+.shipment-summary-card:nth-child(2)::before {
+  background: #f28c28;
+}
+
+.shipment-summary-card:hover {
+  transform: translateY(-3px);
+  border-color: #cfe7f3;
+  box-shadow: 0 14px 34px rgba(17, 34, 51, 0.09);
+}
+
+.shipment-summary-card span {
+  display: block;
+  margin-bottom: 9px;
+  color: #71808c;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+}
+
+.shipment-summary-card strong {
+  color: #111820;
+  font-size: 30px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: -0.03em;
+}
+
+/* Active shipment number */
+.shipment-summary-card:first-child strong {
+  color: #2d9fd4;
+}
+
+/* Held amount */
+.shipment-summary-card:nth-child(2) strong {
+  color: #111820;
+}
+
+/* Mobile */
+@media (max-width: 700px) {
+  .shipment-summary-row {
+    padding: 0 16px;
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  .shipment-summary-card {
+    min-height: 105px;
+    padding: 20px 22px;
+    border-radius: 16px;
+  }
+
+  .shipment-summary-card strong {
+    font-size: 26px;
+  }
+}
+
+/* Small phones */
+@media (max-width: 420px) {
+  .shipment-summary-row {
+    padding: 0 12px;
+  }
+
+  .shipment-summary-card {
+    padding: 18px 20px;
+  }
+}
+
+/* =========================================================
+   CREATE SHIPMENT — PAYMENT ERROR / TOP UP
+   ========================================================= */
+
+.shipment-form-error.modal-error {
+  margin: 18px 0 22px;
+  padding: 16px 18px;
+  background: #fff8f3;
+  border: 1px solid #f5d6c0;
+  border-radius: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.shipment-form-error.modal-error strong {
+  color: #c45b22;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.shipment-form-error.modal-error span {
+  color: #66737d;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.shipment-form-error.modal-error button {
+  align-self: flex-start;
+  margin-top: 6px;
+  padding: 11px 18px;
+  border: 0;
+  border-radius: 9px;
+  background: #2d9fd4;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.shipment-form-error.modal-error button:hover {
+  background: #238bbd;
+  transform: translateY(-1px);
+  box-shadow: 0 6px 16px rgba(45, 159, 212, 0.2);
+}
+
+.shipment-form-error.modal-error button:active {
+  transform: translateY(0);
+}
+
+/* Payment failed message outside the modal */
+.shipment-form-error:not(.modal-error) {
+  margin: 20px 0;
+  padding: 15px 18px;
+  background: #fff8f3;
+  border: 1px solid #f5d6c0;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.shipment-form-error:not(.modal-error) strong {
+  color: #c45b22;
+  font-size: 14px;
+}
+
+.shipment-form-error:not(.modal-error) span {
+  color: #697780;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+/* =========================================================
+   MY SHIPMENTS — LOADING / ERROR / EMPTY STATES
+   ========================================================= */
+
+.my-shipments-list {
+  width: 100%;
+}
+
+.shipment-empty-state {
+  width: 100%;
+  max-width: 620px;
+  margin: 32px auto;
+  padding: 42px 28px;
+  background: #ffffff;
+  border: 1px solid #e5edf2;
+  border-radius: 20px;
+  box-shadow: 0 10px 32px rgba(17, 34, 51, 0.06);
+  text-align: center;
+}
+
+.shipment-empty-icon {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  background: #eaf8ff;
+  color: #2d9fd4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.shipment-empty-state h2 {
+  margin: 0 0 8px;
+  color: #111820;
+  font-size: 20px;
+  font-weight: 750;
+}
+
+.shipment-empty-state p {
+  max-width: 460px;
+  margin: 0 auto 22px;
+  color: #71808c;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.shipment-empty-state button {
+  border: 0;
+  border-radius: 10px;
+  padding: 12px 20px;
+  background: #2d9fd4;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.shipment-empty-state button:hover {
+  background: #238bbd;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(45, 159, 212, 0.2);
+}
+
+.shipment-empty-state button:active {
+  transform: translateY(0);
+}
+
+/* Error state */
+.shipment-empty-state:has(.shipment-error-icon) {
+  border-color: #f0d8cc;
+}
+
+.shipment-error-icon {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  background: #fff4ed;
+  color: #c45b22;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 23px;
+  font-weight: 800;
+}
+
+/* Mobile */
+@media (max-width: 700px) {
+  .shipment-empty-state {
+    margin: 24px 16px;
+    padding: 34px 20px;
+    border-radius: 17px;
+  }
+
+  .shipment-empty-state h2 {
+    font-size: 18px;
+  }
+
+  .shipment-empty-state p {
+    font-size: 13px;
+  }
+}
+
+/* =========================================================
+   DISPATCH AVAILABILITY - BACKEND STATES
+   ========================================================= */
+
+.dispatch-availability-error {
+  width: 100%;
+  margin: 24px 0;
+  padding: 16px 18px;
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  background: #fff8f4;
+  border: 1px solid #f1d7c8;
+  border-radius: 14px;
+  box-sizing: border-box;
+}
+
+.dispatch-availability-error-icon {
+  width: 38px;
+  height: 38px;
+  flex: 0 0 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #fff0e8;
+  color: #c45b22;
+  font-size: 18px;
+  font-weight: 800;
+}
+
+.dispatch-availability-error > div {
+  flex: 1;
+}
+
+.dispatch-availability-error strong {
+  display: block;
+  margin-bottom: 3px;
+  color: #17212b;
+  font-size: 14px;
+  font-weight: 750;
+}
+
+.dispatch-availability-error p {
+  margin: 0;
+  color: #71808c;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+.dispatch-availability-error button {
+  border: 0;
+  padding: 9px 14px;
+  border-radius: 9px;
+  background: #eaf8ff;
+  color: #238bbd;
+  font-size: 12px;
+  font-weight: 750;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.dispatch-availability-error button:hover {
+  background: #dff3fc;
+  transform: translateY(-1px);
+}
+
+.dispatch-availability-error button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+  transform: none;
+}
+
+
+/* LOADING */
+
+.availability-loading-state {
+  width: 100%;
+  max-width: 620px;
+  margin: 28px auto;
+  padding: 42px 24px;
+  background: #ffffff;
+  border: 1px solid #e5edf2;
+  border-radius: 20px;
+  box-shadow: 0 10px 32px rgba(17, 34, 51, 0.06);
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.availability-loading-spinner {
+  width: 38px;
+  height: 38px;
+  margin: 0 auto 18px;
+  border: 3px solid #e5f3f9;
+  border-top-color: #2d9fd4;
+  border-radius: 50%;
+  animation: availabilitySpin 0.8s linear infinite;
+}
+
+@keyframes availabilitySpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.availability-loading-state h3 {
+  margin: 0 0 7px;
+  color: #111820;
+  font-size: 18px;
+  font-weight: 750;
+}
+
+.availability-loading-state p {
+  margin: 0;
+  color: #71808c;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+
+/* EMPTY */
+
+.availability-empty-state {
+  width: 100%;
+  max-width: 620px;
+  margin: 28px auto;
+  padding: 42px 28px;
+  background: #ffffff;
+  border: 1px solid #e5edf2;
+  border-radius: 20px;
+  box-shadow: 0 10px 32px rgba(17, 34, 51, 0.06);
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.availability-empty-icon {
+  width: 58px;
+  height: 58px;
+  margin: 0 auto 18px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: #eaf8ff;
+  color: #2d9fd4;
+  font-size: 27px;
+  font-weight: 500;
+}
+
+.availability-empty-state h3 {
+  margin: 0 0 8px;
+  color: #111820;
+  font-size: 20px;
+  font-weight: 750;
+}
+
+.availability-empty-state p {
+  max-width: 460px;
+  margin: 0 auto 22px;
+  color: #71808c;
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.availability-empty-state button {
+  border: 0;
+  padding: 12px 20px;
+  border-radius: 10px;
+  background: #2d9fd4;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+  transition:
+    transform 0.2s ease,
+    background 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.availability-empty-state button:hover {
+  background: #238bbd;
+  transform: translateY(-2px);
+  box-shadow: 0 8px 18px rgba(45, 159, 212, 0.2);
+}
+
+
+/* FORM / ACTION DISABLED STATES */
+
+.dispatch-submit-button:disabled,
+.dispatch-cancel-button:disabled,
+.dispatch-modal-close:disabled,
+.delete-availability-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.dispatch-submit-button:disabled {
+  transform: none;
+  box-shadow: none;
+}
+
+.delete-availability-button:disabled {
+  pointer-events: none;
+}
+
+
+/* MOBILE */
+
+@media (max-width: 700px) {
+
+  .dispatch-availability-error {
+    align-items: flex-start;
+    flex-wrap: wrap;
+  }
+
+  .dispatch-availability-error > div {
+    min-width: 0;
+  }
+
+  .dispatch-availability-error button {
+    width: 100%;
+    margin-left: 52px;
+  }
+
+  .availability-loading-state,
+  .availability-empty-state {
+    margin: 22px 16px;
+    width: calc(100% - 32px);
+    padding: 34px 20px;
+    border-radius: 17px;
+  }
+
+  .availability-empty-state h3 {
+    font-size: 18px;
+  }
+
+  .availability-empty-state p {
+    font-size: 13px;
+  }
+
+}.dashboard-deposit-button,
+.deposit-button {
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.dashboard-deposit-button:hover,
+.deposit-button:hover {
+  background: #dff3ff;
+  color: #1689c7;
+  border-color: #1689c7;
+  transform: translateY(-1px);
+}
+
+.dashboard-withdraw-button,
+.withdraw-button {
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.dashboard-withdraw-button:hover,
+.withdraw-button:hover {
+  background: #fff0e6;
+  color: #f47b20;
+  border-color: #f47b20;
+  transform: translateY(-1px);
+}
+
+/* =========================================================
+   DASHBOARD WALLET ACTION BUTTONS
+========================================================= */
+
+.deposit-button,
+.dashboard-deposit-button {
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.deposit-button:hover,
+.dashboard-deposit-button:hover {
+  background: #e0f4ff;
+  color: #1689c7;
+  border-color: #1689c7;
+  transform: translateY(-1px);
+}
+
+
+.withdraw-button,
+.dashboard-withdraw-button {
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.withdraw-button:hover,
+.dashboard-withdraw-button:hover {
+  background: #fff0e6;
+  color: #f47b20;
+  border-color: #f47b20;
+  transform: translateY(-1px);
+}
+/* =========================================================
+   DASHBOARD WALLET ACTION HOVERS
+========================================================= */
+
+.dashboard-deposit,
+.dashboard-withdraw {
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease,
+    border-color 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+
+/* DEPOSIT — LIGHT BLUE */
+
+.dashboard-deposit:hover {
+  background: #e0f4ff;
+  color: #1689c7;
+  border-color: #1689c7;
+  transform: translateY(-1px);
+}
+
+
+/* WITHDRAW — ORANGE */
+
+.dashboard-withdraw:hover {
+  background: #fff0e6;
+  color: #f47b20;
+  border-color: #f47b20;
+  transform: translateY(-1px);
+}
