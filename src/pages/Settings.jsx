@@ -69,6 +69,24 @@ function SettingsIcon({ type }) {
     );
   }
 
+  if (type === "dispute") {
+  return (
+    <svg viewBox="0 0 24 24" fill="none">
+      <path
+        d="M12 8v4M12 16h.01"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+      <path
+        d="M10.3 4.5 3.6 16a2 2 0 0 0 1.74 3h13.32a2 2 0 0 0 1.74-3L13.7 4.5a2 2 0 0 0-3.4 0Z"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+    </svg>
+  );
+}
+
   if (type === "terms") {
     return (
       <svg viewBox="0 0 24 24" fill="none">
@@ -201,6 +219,25 @@ function Settings() {
             <span>SUPPORT</span>
             <h2>Need assistance?</h2>
           </div>
+
+
+          <button
+  className="settings-option"
+  onClick={() => navigate("/disputes")}
+>
+  <span className="settings-option-icon">
+    <SettingsIcon type="dispute" />
+  </span>
+
+  <span className="settings-option-content">
+    <strong>Report a Shipment Issue</strong>
+    <small>
+      View or report an issue with a shipment
+    </small>
+  </span>
+
+  <span className="settings-option-arrow">›</span>
+</button>
 
 
           <button

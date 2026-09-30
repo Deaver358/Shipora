@@ -50,7 +50,7 @@ import Rejected from "./pages/Rejected";
 import Verified from "./pages/Verified";
 import VendorApplications from "./pages/VendorApplications";
 import DispatcherApplications from "./pages/DispatcherApplications";
-
+import Dispute from "./pages/Dispute";
 import "./index.css";
 import ChangePassword from "./pages/ChangePassword";
 
@@ -77,7 +77,8 @@ function App() {
   path="/vendor-applications"
   element={<VendorApplications />}
 />
-
+<Route path="/dispute/:shipmentId" element={<Dispute />} />
+<Route path="/disputes" element={<Dispute />} />
 <Route
   path="/dispatcher-applications"
   element={<DispatcherApplications />}

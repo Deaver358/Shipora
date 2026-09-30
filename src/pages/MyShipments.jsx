@@ -345,9 +345,7 @@ if (
               className="my-shipment-card"
               key={shipment.shipment_id}
               onClick={() =>
-                navigate(
-                  `/shipment/${shipment.public_token}`
-                )
+                navigate(`/shipment/${shipment.shipment_id}`)
               }
             >
               {/* HEADER */}

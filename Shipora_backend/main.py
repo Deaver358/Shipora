@@ -18,6 +18,7 @@ from app.routes.notification_routers import router as notification_router
 from app.routes.profile_routers import router as profile_router
 from app.routes.wallet_routers import router as wallet_router
 from app.services.shipment_services import ShipmentService
+from app.routes.dispute_routers import router as dispute_router
 
 # Import every model so SQLModel metadata contains every table.
 from app.models.user_model import User
@@ -30,6 +31,7 @@ from app.models.rating_model import Rating
 from app.models.wallet_transaction_model import WalletTransaction
 from app.models.dispatch_availability_model import DispatchAvailability
 from app.models.notification_model import Notification
+from app.models.dispute_model import Dispute
 
 version = "v1.0"
 scheduler = AsyncIOScheduler()
@@ -135,7 +137,11 @@ app.include_router(notification_router, prefix=f"{API_PREFIX}/notifications", ta
 app.include_router(profile_router, prefix=f"{API_PREFIX}/profile", tags=["Profile"])
 app.include_router(wallet_router, prefix=f"{API_PREFIX}/wallet", tags=["Wallet"])
 
-
+app.include_router(
+    dispute_router,
+    prefix=f"{API_PREFIX}/disputes",
+    tags=["Disputes"],
+)
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "shipora", "version": version}

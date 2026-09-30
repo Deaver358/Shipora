@@ -179,7 +179,7 @@ function BankAccount() {
           onClick={() => navigate("/withdraw")}
         >
           ← Back to Withdrawal
-        </button>
+        </button> <br />
 
         <span className="page-eyebrow">
           BANK ACCOUNT

@@ -1,70 +1,254 @@
+import { useEffect, useMemo, useState } from "react";
 import { useNavigate, useParams } from "react-router-dom";
+import { api } from "../interceptors/api";
 import "../index.css";
 
 function ShipmentDetails() {
   const navigate = useNavigate();
   const { shipmentId } = useParams();
 
-  // Frontend placeholder.
-  // Supabase shipment data will replace this later.
-  const shipment = {
-    id: shipmentId || "SHP-2048-921",
-    status: "available",
-    paymentStatus: "HELD FOR DELIVERY",
-    itemName: "Electronics",
-    description: "Laptop in sealed package",
-    media: [
-  // Backend will eventually populate this.
-  // Example:
-  // {
-  //   type: "image",
-  //   url: "https://..."
-  // },
-  // {
-  //   type: "video",
-  //   url: "https://..."
-  // }
-],
-    pickup: "Lekki Phase 1, Lagos",
-    destination: "Yaba, Lagos",
-    recipientName: "David Emmanuel",
-    recipientPhone: "080XXXXXXXX",
-    deliveryFee: 5000,
-    paymentBy: "Vendor",
-    createdAt: "Today, 10:42 AM",
+  const [shipment, setShipment] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [showDispute, setShowDispute] = useState(false);
+  const [disputeReason, setDisputeReason] = useState("");
+
+  const loadShipment = async () => {
+    try {
+      setLoading(true);
+      setError("");
+
+      const response = await api.get(`shipments/${shipmentId}`);
+      setShipment(response.data);
+    } catch (err) {
+      setError(
+        err?.response?.data?.detail ||
+          "Unable to load this shipment."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const dispatches = [
-    {
-      id: 1,
-      name: "Michael A.",
-      rating: "4.9",
-      trips: 127,
-      vehicle: "Car",
-      route: "Lekki → Mainland",
-      price: "₦5,000",
-    },
-    {
-      id: 2,
-      name: "Daniel O.",
-      rating: "4.8",
-      trips: 94,
-      vehicle: "Van",
-      route: "Lekki → Mainland",
-      price: "₦5,500",
-    },
-  ];
+  useEffect(() => {
+    if (shipmentId) {
+      loadShipment();
+    }
+  }, [shipmentId]);
+
+  const status = String(shipment?.status || "")
+    .toUpperCase()
+    .replace(/-/g, "_");
+
+  const statusLabel = useMemo(() => {
+    const labels = {
+      PENDING_PAYMENT: "Pending Payment",
+      ASSIGNED: "Assigned",
+      PICKED_UP: "Picked Up",
+      IN_TRANSIT: "In Transit",
+      OUT_FOR_DELIVERY: "Out for Delivery",
+      DELIVERED: "Delivered",
+      COMPLETED: "Completed",
+      DISPUTED: "Disputed",
+      CANCELLED: "Cancelled",
+    };
+
+    return labels[status] || shipment?.status || "Unknown";
+  }, [status, shipment]);
+
+  const formatMoney = (amount) => {
+    if (amount === null || amount === undefined) {
+      return "—";
+    }
+
+    return `₦${(Number(amount) / 100).toLocaleString(
+      undefined,
+      {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2,
+      }
+    )}`;
+  };
+
+  const formatDate = (value) => {
+    if (!value) return "—";
+
+    try {
+      return new Date(value).toLocaleString(undefined, {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
+      });
+    } catch {
+      return "—";
+    }
+  };
+
+  const handleConfirmDelivery = async () => {
+    if (actionLoading) return;
+
+    try {
+      setActionLoading(true);
+      setError("");
+
+      const response = await api.post(
+        `shipments/${shipmentId}/confirm`
+      );
+
+      setShipment(response.data);
+    } catch (err) {
+      setError(
+        err?.response?.data?.detail ||
+          "Unable to confirm delivery."
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  const handleDispute = async () => {
+    if (!disputeReason.trim() || actionLoading) return;
+
+    try {
+      setActionLoading(true);
+      setError("");
+
+      const response = await api.post(
+        `shipments/${shipmentId}/dispute`,
+        {
+          reason: disputeReason.trim(),
+        }
+      );
+
+      setShipment(response.data);
+      setShowDispute(false);
+      setDisputeReason("");
+    } catch (err) {
+      setError(
+        err?.response?.data?.detail ||
+          "Unable to submit the dispute."
+      );
+    } finally {
+      setActionLoading(false);
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="shipment-details-page">
+        <div
+          style={{
+            padding: "40px",
+            textAlign: "center",
+          }}
+        >
+          Loading shipment...
+        </div>
+      </div>
+    );
+  }
+
+  if (!shipment) {
+    return (
+      <div className="shipment-details-page">
+        <div
+          style={{
+            padding: "40px",
+            textAlign: "center",
+          }}
+        >
+          <h2>Shipment unavailable</h2>
+          <p>
+            {error || "This shipment could not be found."}
+          </p>
+
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            style={{ marginTop: "20px" }}
+          >
+            Go Back
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  const shipmentIdDisplay =
+    shipment.tracking_number ||
+    shipment.public_token ||
+    shipment.shipment_id ||
+    shipmentId;
+
+  const media = Array.isArray(shipment.media)
+    ? shipment.media
+    : Array.isArray(shipment.images)
+      ? shipment.images.map((url) => ({
+          type: "image",
+          url,
+        }))
+      : [];
+
+  const itemName =
+    shipment.item_name ||
+    shipment.itemName ||
+    "Shipment";
+
+  const description =
+    shipment.description ||
+    shipment.note ||
+    "No package description provided.";
+
+  const pickup =
+    shipment.pickup ||
+    shipment.pickup_location ||
+    "Pickup location";
+
+  const destination =
+    shipment.destination ||
+    "Destination";
+
+  const recipientName =
+    shipment.recipient_name ||
+    shipment.recipientName ||
+    "—";
+
+  const recipientPhone =
+    shipment.recipient_phone ||
+    shipment.recipientPhone ||
+    "—";
+
+  const paymentStatus =
+    shipment.payment_status || "—";
+
+  const statusClass = status
+    .toLowerCase()
+    .replace(/_/g, "-");
+
+  const showConfirm =
+    status === "DELIVERED" &&
+    paymentStatus !== "RELEASED";
+
+  const showDisputeButton =
+    status === "DELIVERED";
 
   return (
     <div className="shipment-details-page">
+
       <button
-  type="button"
-  className="white-page-back-button"
-  onClick={() => navigate(-1)}
-  aria-label="Go back"
->
-  ←
-</button> <br /><br />
+        type="button"
+        className="white-page-back-button"
+        onClick={() => navigate(-1)}
+        aria-label="Go back"
+      >
+        ←
+      </button>
+
+      <br />
+      <br />
 
       {/* ================= HEADER ================= */}
 
@@ -73,22 +257,35 @@ function ShipmentDetails() {
         <div>
           <span>SHIPMENT DETAILS</span>
 
-          <h1>{shipment.id}</h1>
+          <h1>{shipmentIdDisplay}</h1>
         </div>
 
-        <div className="shipment-header-status">
+        <div
+          className={`shipment-header-status ${statusClass}`}
+        >
           <i></i>
-          Available
+          {statusLabel}
         </div>
 
       </header>
 
-
-      {/* ================= MAIN ================= */}
-
       <main className="shipment-details-content">
 
-        {/* ================= STATUS ================= */}
+        {error && (
+          <div
+            style={{
+              padding: "14px 16px",
+              marginBottom: "20px",
+              borderRadius: "10px",
+              background: "#fff1f1",
+              color: "#b42318",
+            }}
+          >
+            {error}
+          </div>
+        )}
+
+        {/* ================= PAYMENT STATUS ================= */}
 
         <section className="shipment-status-card">
 
@@ -99,7 +296,11 @@ function ShipmentDetails() {
           <div>
             <span>PAYMENT STATUS</span>
 
-            <h2>{shipment.paymentStatus}</h2>
+            <h2>
+              {paymentStatus === "HELD"
+                ? "HELD FOR DELIVERY"
+                : paymentStatus}
+            </h2>
 
             <p>
               The delivery amount is protected and will be
@@ -109,7 +310,6 @@ function ShipmentDetails() {
           </div>
 
         </section>
-
 
         {/* ================= ROUTE ================= */}
 
@@ -122,7 +322,6 @@ function ShipmentDetails() {
             </div>
           </div>
 
-
           <div className="shipment-detail-route">
 
             <div className="detail-route-item">
@@ -131,14 +330,12 @@ function ShipmentDetails() {
 
               <div>
                 <small>PICKUP</small>
-                <strong>{shipment.pickup}</strong>
+                <strong>{pickup}</strong>
               </div>
 
             </div>
 
-
             <div className="detail-route-line"></div>
-
 
             <div className="detail-route-item">
 
@@ -146,7 +343,7 @@ function ShipmentDetails() {
 
               <div>
                 <small>DESTINATION</small>
-                <strong>{shipment.destination}</strong>
+                <strong>{destination}</strong>
               </div>
 
             </div>
@@ -155,132 +352,142 @@ function ShipmentDetails() {
 
         </section>
 
-
-        {/* ================= ITEM ================= */}
+        {/* ================= PACKAGE ================= */}
 
         <section className="shipment-detail-card">
 
           <div className="detail-card-heading">
+
             <div>
               <span>PACKAGE</span>
               <h2>Shipment information</h2>
             </div>
-          </div>
 
+          </div>
 
           <div className="shipment-info-grid">
 
             <div>
               <small>ITEM</small>
-              <strong>{shipment.itemName}</strong>
+              <strong>{itemName}</strong>
             </div>
 
             <div>
               <small>DESCRIPTION</small>
-              <strong>{shipment.description}</strong>
+              <strong>{description}</strong>
             </div>
 
             <div>
               <small>RECIPIENT</small>
-              <strong>{shipment.recipientName}</strong>
+              <strong>{recipientName}</strong>
             </div>
 
             <div>
               <small>RECIPIENT PHONE</small>
-              <strong>{shipment.recipientPhone}</strong>
+              <strong>{recipientPhone}</strong>
             </div>
 
           </div>
 
-        </section> 
+        </section>
 
         {/* ================= PACKAGE MEDIA ================= */}
 
-<section className="shipment-detail-card shipment-media-card">
+        <section className="shipment-detail-card shipment-media-card">
 
-  <div className="detail-card-heading">
+          <div className="detail-card-heading">
 
-    <div>
-      <span>PACKAGE MEDIA</span>
+            <div>
+              <span>PACKAGE MEDIA</span>
 
-      <h2>Item photos & videos</h2>
+              <h2>Item photos & videos</h2>
 
-      <p>
-        Photos and videos provided for identification and
-        delivery handling.
-      </p>
-    </div>
+              <p>
+                Photos and videos provided for identification
+                and delivery handling.
+              </p>
+            </div>
 
-  </div>
+          </div>
 
+          {media.length > 0 ? (
 
-  {shipment.media && shipment.media.length > 0 ? (
+            <div className="shipment-media-grid">
 
-    <div className="shipment-media-grid">
+              {media.map((file, index) => {
 
-      {shipment.media.map((media, index) => (
+                const url =
+                  typeof file === "string"
+                    ? file
+                    : file?.url;
 
-        <div
-          className="shipment-media-item"
-          key={index}
-        >
+                const type =
+                  typeof file === "string"
+                    ? "image"
+                    : file?.type;
 
-          {media.type === "video" ? (
+                if (!url) return null;
 
-            <video
-              src={media.url}
-              controls
-              preload="metadata"
-            />
+                return (
+                  <div
+                    className="shipment-media-item"
+                    key={index}
+                  >
+
+                    {type === "video" ? (
+                      <video
+                        src={url}
+                        controls
+                        preload="metadata"
+                      />
+                    ) : (
+                      <img
+                        src={url}
+                        alt={`Shipment item ${index + 1}`}
+                      />
+                    )}
+
+                  </div>
+                );
+              })}
+
+            </div>
 
           ) : (
 
-            <img
-              src={media.url}
-              alt={`Shipment item ${index + 1}`}
-            />
+            <div className="shipment-media-empty">
+
+              <div className="shipment-media-empty-icon">
+                📦
+              </div>
+
+              <strong>
+                No package media uploaded
+              </strong>
+
+              <p>
+                Photos or videos of the item will appear
+                here once they are uploaded.
+              </p>
+
+            </div>
 
           )}
 
-        </div>
-
-      ))}
-
-    </div>
-
-  ) : (
-
-    <div className="shipment-media-empty">
-
-      <div className="shipment-media-empty-icon">
-        📦
-      </div>
-
-      <strong>No package media uploaded</strong>
-
-      <p>
-        Photos or videos of the item will appear here
-        once they are uploaded.
-      </p>
-
-    </div>
-
-  )}
-
-</section>
-
+        </section>
 
         {/* ================= PAYMENT ================= */}
 
         <section className="shipment-detail-card">
 
           <div className="detail-card-heading">
+
             <div>
               <span>DELIVERY PAYMENT</span>
               <h2>Payment arrangement</h2>
             </div>
-          </div>
 
+          </div>
 
           <div className="shipment-payment-summary">
 
@@ -288,7 +495,7 @@ function ShipmentDetails() {
               <small>DELIVERY FEE</small>
 
               <strong>
-                ₦{shipment.deliveryFee.toLocaleString()}
+                {formatMoney(shipment.delivery_fee)}
               </strong>
             </div>
 
@@ -296,7 +503,7 @@ function ShipmentDetails() {
               <small>PAID BY</small>
 
               <strong>
-                {shipment.paymentBy}
+                {shipment.payment_by || "Vendor"}
               </strong>
             </div>
 
@@ -304,7 +511,9 @@ function ShipmentDetails() {
               <small>STATUS</small>
 
               <strong className="held-status">
-                HELD FOR DELIVERY
+                {paymentStatus === "HELD"
+                  ? "HELD FOR DELIVERY"
+                  : paymentStatus}
               </strong>
             </div>
 
@@ -312,39 +521,232 @@ function ShipmentDetails() {
 
         </section>
 
+        {/* ================= DISPATCH STATUS ================= */}
+
         <div className="shipment-dispatch-empty">
-  <div className="shipment-dispatch-empty-icon">
-    🚚
-  </div>
 
-  <div className="shipment-dispatch-empty-content">
-    <span className="shipment-dispatch-eyebrow">
-      DISPATCH STATUS
-    </span>
+          <div className="shipment-dispatch-empty-icon">
+            🚚
+          </div>
 
-    <h3>No dispatch assigned yet</h3>
+          <div className="shipment-dispatch-empty-content">
 
-    <p>
-      Your shipment is currently waiting for a dispatcher.
-      Once a dispatcher applies, their delivery information
-      will appear here for you to review.
-    </p>
+            <span className="shipment-dispatch-eyebrow">
+              DISPATCH STATUS
+            </span>
 
-    <button
-      type="button"
-      className="shipment-find-dispatch-button"
-      onClick={() => navigate("/FindDispatch")}
-    >
-      Find a Dispatch
-      <span>→</span>
-    </button>
-  </div>
-</div>
+            <h3>
+              {shipment.dispatcher_id
+                ? "Dispatcher assigned"
+                : "No dispatch assigned yet"}
+            </h3>
 
+            <p>
+              {shipment.dispatcher_id
+                ? "A dispatcher has been assigned to this shipment. Delivery progress will appear here as the shipment moves."
+                : "Your shipment is currently waiting for a dispatcher. Once a dispatcher is assigned, delivery progress will appear here."}
+            </p>
 
+          </div>
 
+        </div>
 
-        {/* ================= SHIPMENT TIMELINE ================= */}
+        {/* ================= DELIVERY CONFIRMATION ================= */}
+
+        {showConfirm && (
+          <section className="shipment-status-card">
+
+            <div className="shipment-status-icon">
+              ✓
+            </div>
+
+            <div style={{ width: "100%" }}>
+
+              <span>DELIVERY CONFIRMATION</span>
+
+              <h2>
+                Dispatcher marked this shipment delivered
+              </h2>
+
+              <p>
+                Please confirm that you received the
+                shipment. Confirmation releases the held
+                payment to the dispatcher.
+              </p>
+
+              <button
+                type="button"
+                onClick={handleConfirmDelivery}
+                disabled={actionLoading}
+                style={{
+                  width: "100%",
+                  marginTop: "16px",
+                  padding: "14px 18px",
+                  border: "none",
+                  borderRadius: "10px",
+                  cursor: actionLoading
+                    ? "not-allowed"
+                    : "pointer",
+                  fontWeight: 700,
+                  opacity: actionLoading ? 0.7 : 1,
+                }}
+              >
+                {actionLoading
+                  ? "Processing..."
+                  : "Confirm Delivery"}
+              </button>
+
+            </div>
+
+          </section>
+        )}
+
+        {/* ================= COMPLETED ================= */}
+
+        {status === "COMPLETED" && (
+          <section className="shipment-status-card">
+
+            <div className="shipment-status-icon">
+              ✓
+            </div>
+
+            <div>
+
+              <span>DELIVERY COMPLETE</span>
+
+              <h2>Payment Released</h2>
+
+              <p>
+                Delivery has been confirmed and the held
+                payment has been released to the dispatcher.
+              </p>
+
+            </div>
+
+          </section>
+        )}
+
+        {/* ================= DISPUTE ================= */}
+
+        {showDisputeButton && (
+          <section className="shipment-dispute-card">
+
+            <div>
+
+              <strong>
+                Something wrong with the delivery?
+              </strong>
+
+              <p>
+                You can dispute this delivery before the
+                payment is released. The payment will remain
+                held while Shipora reviews the issue.
+              </p>
+
+            </div>
+
+            <button
+              type="button"
+              onClick={() => setShowDispute(true)}
+              disabled={actionLoading}
+            >
+              Report an Issue
+            </button>
+
+          </section>
+        )}
+
+        {status === "DISPUTED" && (
+          <section className="shipment-dispute-card">
+
+            <div>
+
+              <strong>
+                Delivery dispute opened
+              </strong>
+
+              <p>
+                Payment remains held while Shipora reviews
+                the dispute.
+              </p>
+
+            </div>
+
+          </section>
+        )}
+
+        {/* ================= DISPUTE FORM ================= */}
+
+        {showDispute && (
+          <section className="shipment-detail-card">
+
+            <div className="detail-card-heading">
+
+              <div>
+                <span>REPORT AN ISSUE</span>
+
+                <h2>
+                  Tell us what happened
+                </h2>
+              </div>
+
+            </div>
+
+            <textarea
+              value={disputeReason}
+              onChange={(event) =>
+                setDisputeReason(event.target.value)
+              }
+              placeholder="Describe the issue with this delivery..."
+              rows={5}
+              style={{
+                width: "100%",
+                boxSizing: "border-box",
+                padding: "14px",
+                borderRadius: "10px",
+                border: "1px solid #ddd",
+                resize: "vertical",
+              }}
+            />
+
+            <div
+              style={{
+                display: "flex",
+                gap: "10px",
+                marginTop: "14px",
+              }}
+            >
+
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDispute(false);
+                  setDisputeReason("");
+                }}
+                disabled={actionLoading}
+              >
+                Cancel
+              </button>
+
+              <button
+                type="button"
+                onClick={handleDispute}
+                disabled={
+                  actionLoading ||
+                  !disputeReason.trim()
+                }
+              >
+                {actionLoading
+                  ? "Submitting..."
+                  : "Submit Dispute"}
+              </button>
+
+            </div>
+
+          </section>
+        )}
+
+        {/* ================= TIMELINE ================= */}
 
         <section className="shipment-detail-card">
 
@@ -357,101 +759,73 @@ function ShipmentDetails() {
 
           </div>
 
-
           <div className="shipment-detail-timeline">
 
-            <div className="detail-timeline-item completed">
+            {[
+              ["PENDING_PAYMENT", "Shipment Created"],
+              ["ASSIGNED", "Dispatcher Assigned"],
+              ["PICKED_UP", "Picked Up"],
+              ["IN_TRANSIT", "In Transit"],
+              ["OUT_FOR_DELIVERY", "Out for Delivery"],
+              ["DELIVERED", "Delivered"],
+              ["COMPLETED", "Completed"],
+            ].map(([timelineStatus, label]) => {
 
-              <span>✓</span>
+              const order = [
+                "PENDING_PAYMENT",
+                "ASSIGNED",
+                "PICKED_UP",
+                "IN_TRANSIT",
+                "OUT_FOR_DELIVERY",
+                "DELIVERED",
+                "COMPLETED",
+              ];
 
-              <div>
-                <strong>Shipment Created</strong>
-                <p>{shipment.createdAt}</p>
-              </div>
+              const currentIndex =
+                order.indexOf(status);
 
-            </div>
+              const itemIndex =
+                order.indexOf(timelineStatus);
 
+              const completed =
+                currentIndex >= itemIndex &&
+                currentIndex !== -1;
 
-            <div className="detail-timeline-item active">
+              const active =
+                timelineStatus === status;
 
-              <span></span>
+              return (
+                <div
+                  className={`detail-timeline-item ${
+                    completed ? "completed" : ""
+                  } ${active ? "active" : ""}`}
+                  key={timelineStatus}
+                >
 
-              <div>
-                <strong>Waiting for Dispatch</strong>
+                  <span>
+                    {completed ? "✓" : ""}
+                  </span>
 
-                <p>
-                  Your shipment is available for a verified
-                  dispatch to accept.
-                </p>
-              </div>
+                  <div>
+                    <strong>{label}</strong>
 
-            </div>
+                    {active && (
+                      <p>
+                        Current shipment status.
+                      </p>
+                    )}
 
+                  </div>
 
-            <div className="detail-timeline-item">
-
-              <span></span>
-
-              <div>
-                <strong>In Transit</strong>
-
-                <p>
-                  Shipment movement will appear here once
-                  the dispatch begins the journey.
-                </p>
-              </div>
-
-            </div>
-
-
-            <div className="detail-timeline-item">
-
-              <span></span>
-
-              <div>
-                <strong>Delivered</strong>
-
-                <p>
-                  Delivery confirmation will complete the
-                  shipment.
-                </p>
-              </div>
-
-            </div>
+                </div>
+              );
+            })}
 
           </div>
-
-        </section>
-
-
-        {/* ================= DISPUTE ================= */}
-
-        <section className="shipment-dispute-card">
-
-          <div>
-            <strong>Need help with this shipment?</strong>
-
-            <p>
-              If there is an issue with pickup, delivery,
-              payment or the condition of the shipment, you
-              can open a dispute for review.
-            </p>
-          </div>
-
-          <button
-            onClick={() =>
-              alert(
-                "Dispute handling will be connected to the backend later."
-              )
-            }
-          >
-            Report an Issue
-          </button>
 
         </section>
 
       </main>
-
 
       {/* ================= BOTTOM NAVIGATION ================= */}
 
@@ -462,57 +836,63 @@ function ShipmentDetails() {
           onClick={() => navigate("/Home")}
         >
           <svg viewBox="0 0 24 24" fill="none">
+
             <path
               d="M3 10.5L12 3L21 10.5V21H3V10.5Z"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinejoin="round"
             />
+
             <path
               d="M9 21V14H15V21"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinejoin="round"
             />
+
           </svg>
 
           <span>Home</span>
         </button>
-
 
         <button
           className="bottom-nav-item active"
           onClick={() => navigate("/shipments")}
         >
           <svg viewBox="0 0 24 24" fill="none">
+
             <path
               d="M4 7.5L12 3L20 7.5V16.5L12 21L4 16.5V7.5Z"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinejoin="round"
             />
+
             <path
               d="M4 7.5L12 12L20 7.5"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinejoin="round"
             />
+
             <path
               d="M12 12V21"
               stroke="currentColor"
               strokeWidth="1.8"
             />
+
           </svg>
 
           <span>Shipments</span>
         </button>
-
 
         <button
           className="bottom-nav-item"
           onClick={() => navigate("/tracking")}
         >
           <svg viewBox="0 0 24 24" fill="none">
+
             <circle
               cx="12"
               cy="12"
@@ -520,6 +900,7 @@ function ShipmentDetails() {
               stroke="currentColor"
               strokeWidth="1.8"
             />
+
             <path
               d="M12 7V12L15.5 14"
               stroke="currentColor"
@@ -527,41 +908,46 @@ function ShipmentDetails() {
               strokeLinecap="round"
               strokeLinejoin="round"
             />
+
           </svg>
 
           <span>Tracking</span>
         </button>
-
 
         <button
           className="bottom-nav-item"
           onClick={() => navigate("/dashboard")}
         >
           <svg viewBox="0 0 24 24" fill="none">
+
             <path
               d="M4 19V11"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinecap="round"
             />
+
             <path
               d="M10 19V5"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinecap="round"
             />
+
             <path
               d="M16 19V9"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinecap="round"
             />
+
             <path
               d="M22 19V3"
               stroke="currentColor"
               strokeWidth="1.8"
               strokeLinecap="round"
             />
+
           </svg>
 
           <span>Dashboard</span>

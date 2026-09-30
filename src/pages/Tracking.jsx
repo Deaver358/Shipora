@@ -3,6 +3,10 @@ import { useNavigate, NavLink } from "react-router-dom";
 import shiporaLogo from "../assets/shipora-logo.jpeg";
 import "../index.css";
 
+const API_BASE =
+  import.meta.env.VITE_API_BASE_URL ||
+  "http://localhost:8000/api/v1";
+
 function Tracking() {
   const navigate = useNavigate();
 
@@ -12,70 +16,72 @@ function Tracking() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  /*
-  ============================================================
-  SHIPORA SHIPMENT LIFECYCLE
-
-  available
-      ↓
-  dispatch_assigned
-      ↓
-  picked_up
-      ↓
-  in_transit
-      ↓
-  out_for_delivery
-      ↓
-  delivered
-  ============================================================
-  */
-
   const statusSteps = [
     {
-      key: "available",
+      key: "pending_payment",
       label: "Shipment Created",
       description:
-        "The shipment has been created and is available for dispatch matching.",
+        "The shipment has been created and is awaiting payment.",
     },
     {
-      key: "dispatch_assigned",
+      key: "open",
+      label: "Available for Dispatch",
+      description:
+        "The shipment is available for verified dispatch matching.",
+    },
+    {
+      key: "assigned",
       label: "Dispatch Assigned",
       description:
-        "A verified dispatch has accepted the shipment and is assigned to the delivery.",
+        "A verified dispatch has accepted the shipment.",
     },
     {
       key: "picked_up",
       label: "Picked Up",
       description:
-        "The dispatch has collected the shipment from the pickup location.",
+        "The dispatch has collected the shipment.",
     },
     {
       key: "in_transit",
       label: "In Transit",
       description:
-        "The shipment is currently moving toward the delivery destination.",
+        "The shipment is currently moving toward its destination.",
     },
     {
       key: "out_for_delivery",
       label: "Out for Delivery",
       description:
-        "The dispatch is completing the final part of the delivery journey.",
+        "The dispatch is completing the final part of the delivery.",
     },
     {
       key: "delivered",
       label: "Delivered",
       description:
-        "The recipient has received the shipment and delivery has been completed.",
+        "The recipient has received the shipment.",
+    },
+    {
+      key: "completed",
+      label: "Completed",
+      description:
+        "The shipment has been completed.",
+    },
+    {
+      key: "disputed",
+      label: "Dispute Under Review",
+      description:
+        "This shipment has an active dispute under Shipora review.",
+    },
+    {
+      key: "cancelled",
+      label: "Cancelled",
+      description:
+        "This shipment has been cancelled.",
     },
   ];
 
   /*
   ============================================================
-  TRACK SHIPMENT
-
-  Temporary demo data.
-
-  This will later be replaced with the Supabase shipment query.
+  REAL SHIPORA TRACKING API
   ============================================================
   */
 
@@ -86,6 +92,8 @@ function Tracking() {
 
     if (!number) {
       setError("Please enter a tracking number.");
+      setSearched(false);
+      setShipment(null);
       return;
     }
 
@@ -94,46 +102,38 @@ function Tracking() {
     setShipment(null);
     setError("");
 
-    setTimeout(() => {
-      const demoShipment = {
-        id: number,
-        tracking_number: number,
+    try {
+      const response = await fetch(
+        `${API_BASE}/shipments/tracking/${encodeURIComponent(number)}`,
+        {
+          method: "GET",
+          credentials: "include",
+          headers: {
+            Accept: "application/json",
+          },
+        }
+      );
 
-        shipment_status: "in_transit",
+      const data = await response.json().catch(() => null);
 
-        item_name: "Electronics",
-        description: "Laptop in sealed package",
+      if (!response.ok) {
+        throw new Error(
+          data?.detail ||
+            "We couldn't find a shipment with that tracking number."
+        );
+      }
 
-        pickup: "Lekki Phase 1, Lagos",
-        destination: "Yaba, Lagos",
-
-        recipient_name: "David Emmanuel",
-        recipient_phone: "080XXXXXXXX",
-
-        dispatch_name: "Michael A.",
-        dispatch_vehicle: "Car",
-        dispatch_rating: "4.9",
-
-        delivery_fee: 5000,
-        payment_by: "Vendor",
-        payment_status: "HELD FOR DELIVERY",
-
-        current_location: "Lagos Distribution Centre",
-
-        created_at: new Date(
-          Date.now() - 1000 * 60 * 60 * 48
-        ).toISOString(),
-
-        updated_at: new Date().toISOString(),
-
-        status_note:
-          "Your shipment is currently moving through the delivery network.",
-      };
-
-      setShipment(demoShipment);
+      setShipment(data);
       setSearched(true);
+    } catch (err) {
+      setError(
+        err.message ||
+          "Unable to retrieve this shipment. Please try again."
+      );
+      setSearched(true);
+    } finally {
       setLoading(false);
-    }, 700);
+    }
   };
 
   /*
@@ -151,7 +151,7 @@ function Tracking() {
   };
 
   const currentStatusIndex = shipment
-    ? getStatusIndex(shipment.shipment_status)
+    ? getStatusIndex(shipment.status || shipment.shipment_status)
     : 0;
 
   const getStatusLabel = (status) => {
@@ -159,13 +159,25 @@ function Tracking() {
       (item) => item.key === status
     );
 
-    return step ? step.label : "Shipment Created";
+    if (step) return step.label;
+
+    if (!status) return "Shipment Created";
+
+    return String(status)
+      .replaceAll("_", " ")
+      .replace(/\b\w/g, (char) => char.toUpperCase());
   };
 
   const formatDate = (date) => {
     if (!date) return "";
 
-    return new Date(date).toLocaleString("en-US", {
+    const parsed = new Date(date);
+
+    if (Number.isNaN(parsed.getTime())) {
+      return "";
+    }
+
+    return parsed.toLocaleString("en-US", {
       month: "long",
       day: "numeric",
       year: "numeric",
@@ -173,6 +185,29 @@ function Tracking() {
       minute: "2-digit",
     });
   };
+
+  const formatMoney = (amount) => {
+    const value = Number(amount || 0);
+
+    /*
+      Backend stores monetary values in kobo.
+      Convert to naira for display.
+    */
+    const naira = value / 100;
+
+    return `₦${naira.toLocaleString("en-NG", {
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
+  const currentStatus =
+    shipment?.status || shipment?.shipment_status;
+
+  const canDispute =
+    shipment &&
+    shipment.shipment_id &&
+    !["cancelled", "completed"].includes(currentStatus);
 
   return (
     <main className="tracking-page">
@@ -182,7 +217,6 @@ function Tracking() {
       ====================================================== */}
 
       <header className="app-topbar">
-
         <button
           type="button"
           className="app-logo"
@@ -199,7 +233,6 @@ function Tracking() {
             alt="Shipora"
           />
         </button>
-
       </header>
 
 
@@ -234,9 +267,7 @@ function Tracking() {
           className="tracking-search"
           onSubmit={handleTrack}
         >
-
           <div className="tracking-search-input">
-
             <label htmlFor="trackingNumber">
               Tracking Number
             </label>
@@ -251,9 +282,7 @@ function Tracking() {
               placeholder="e.g. SHP-2048-921"
               autoComplete="off"
             />
-
           </div>
-
 
           <button
             type="submit"
@@ -265,7 +294,6 @@ function Tracking() {
 
             <span>→</span>
           </button>
-
         </form>
 
 
@@ -285,70 +313,51 @@ function Tracking() {
         ================================================== */}
 
         {searched && shipment && (
-
           <div className="tracking-result">
 
-            {/* ==================================================
-                RESULT HEADER
-            ================================================== */}
+            {/* RESULT HEADER */}
 
             <div className="result-header">
-
               <div>
-
                 <span>
                   TRACKING NUMBER
                 </span>
 
                 <strong>
-                  {shipment.tracking_number}
+                  {shipment.tracking_number ||
+                    trackingNumber}
                 </strong>
-
               </div>
-
 
               <div className="result-status">
-
                 <i></i>
 
-                {getStatusLabel(
-                  shipment.shipment_status
-                )}
-
+                {getStatusLabel(currentStatus)}
               </div>
-
             </div>
 
 
-            {/* ==================================================
-                ROUTE
-            ================================================== */}
+            {/* ROUTE */}
 
             <div className="tracking-route">
 
               <div className="tracking-location">
-
                 <span className="location-dot location-dot-start"></span>
 
                 <div>
-
                   <small>
                     PICKUP
                   </small>
 
                   <strong>
-                    {shipment.pickup}
+                    {shipment.pickup || "Not provided"}
                   </strong>
-
                 </div>
-
               </div>
 
 
               <div className="tracking-progress">
-
                 <div className="progress-line">
-
                   <span
                     style={{
                       width: `${
@@ -356,176 +365,180 @@ function Tracking() {
                         statusSteps.length - 1
                           ? 100
                           : Math.max(
-                              12,
+                              8,
                               (
                                 currentStatusIndex /
-                                (statusSteps.length - 1)
+                                Math.max(
+                                  1,
+                                  statusSteps.length - 1
+                                )
                               ) *
                                 100
                             )
                       }%`,
                     }}
                   ></span>
-
                 </div>
-
               </div>
 
 
               <div className="tracking-location">
-
                 <span
                   className={`location-dot ${
-                    currentStatusIndex >= 2
+                    currentStatusIndex >=
+                    statusSteps.length - 2
                       ? "location-dot-completed"
                       : "location-dot-end"
                   }`}
                 ></span>
 
                 <div>
-
                   <small>
                     DESTINATION
                   </small>
 
                   <strong>
-                    {shipment.destination}
+                    {shipment.destination ||
+                      "Not provided"}
                   </strong>
-
                 </div>
-
               </div>
 
             </div>
 
 
-            {/* ==================================================
-                CURRENT LOCATION
-            ================================================== */}
+            {/* CURRENT LOCATION */}
 
             <div className="tracking-current-location">
-
               <div className="tracking-current-location-content">
-
                 <span>
                   CURRENT LOCATION
                 </span>
 
                 <strong>
-                  {shipment.current_location}
+                  {shipment.current_location ||
+                    "Location update pending"}
                 </strong>
 
                 <small>
-                  Last updated{" "}
-                  {formatDate(
-                    shipment.updated_at
-                  )}
+                  {shipment.location_updated_at
+                    ? `Last updated ${formatDate(
+                        shipment.location_updated_at
+                      )}`
+                    : shipment.updated_at
+                    ? `Last updated ${formatDate(
+                        shipment.updated_at
+                      )}`
+                    : ""}
                 </small>
-
               </div>
-
             </div>
 
 
-            {/* ==================================================
-                SHIPMENT INFORMATION
-            ================================================== */}
+            {/* SHIPMENT INFORMATION */}
 
             <div className="tracking-info-grid">
 
               <div className="tracking-info-item">
-
                 <span>
                   ITEM
                 </span>
 
                 <strong>
-                  {shipment.item_name}
+                  {shipment.item_name ||
+                    "Shipment"}
                 </strong>
-
               </div>
 
 
               <div className="tracking-info-item">
-
                 <span>
                   RECIPIENT
                 </span>
 
                 <strong>
-                  {shipment.recipient_name}
+                  {shipment.recipient_name ||
+                    "—"}
                 </strong>
-
               </div>
 
 
               <div className="tracking-info-item">
-
                 <span>
                   DELIVERY FEE
                 </span>
 
                 <strong className="tracking-money">
-                  ₦
-                  {Number(
-                    shipment.delivery_fee || 0
-                  ).toLocaleString()}
+                  {formatMoney(
+                    shipment.delivery_fee
+                  )}
                 </strong>
-
               </div>
 
 
               <div className="tracking-info-item">
-
                 <span>
                   PAYMENT
                 </span>
 
                 <strong className="tracking-payment-status">
-                  {shipment.payment_status}
+                  {String(
+                    shipment.payment_status ||
+                      "unpaid"
+                  )
+                    .replaceAll("_", " ")
+                    .toUpperCase()}
                 </strong>
-
               </div>
 
             </div>
 
 
-            {/* ==================================================
-                ASSIGNED DISPATCH
-            ================================================== */}
+            {/* ASSIGNED DISPATCH */}
 
-            {shipment.dispatch_name && (
-
+            {(shipment.dispatch_name ||
+              shipment.dispatcher_name) && (
               <div className="tracking-dispatch-card">
 
                 <div className="tracking-dispatch-profile">
 
                   <div className="tracking-dispatch-avatar">
-                    {shipment.dispatch_name.charAt(0)}
+                    {(
+                      shipment.dispatch_name ||
+                      shipment.dispatcher_name ||
+                      "D"
+                    ).charAt(0)}
                   </div>
 
                   <div>
-
                     <span>
                       ASSIGNED DISPATCH
                     </span>
 
                     <strong>
-                      {shipment.dispatch_name}
+                      {shipment.dispatch_name ||
+                        shipment.dispatcher_name}
                     </strong>
 
                     <p>
-                      {shipment.dispatch_vehicle}
-                      <span className="dispatch-meta-separator">
-                        ·
-                      </span>
-                      ★ {shipment.dispatch_rating}
-                    </p>
+                      {shipment.dispatch_vehicle ||
+                        shipment.vehicle_type ||
+                        "Dispatch vehicle"}
 
+                      {shipment.dispatch_rating && (
+                        <>
+                          <span className="dispatch-meta-separator">
+                            ·
+                          </span>
+
+                          ★{" "}
+                          {shipment.dispatch_rating}
+                        </>
+                      )}
+                    </p>
                   </div>
 
                 </div>
-
 
                 <div className="tracking-dispatch-verified">
                   <span>✓</span>
@@ -533,19 +546,15 @@ function Tracking() {
                 </div>
 
               </div>
-
             )}
 
 
-            {/* ==================================================
-                TIMELINE
-            ================================================== */}
+            {/* TIMELINE */}
 
             <div className="tracking-timeline">
 
               {statusSteps.map(
                 (step, index) => {
-
                   const completed =
                     index <
                     currentStatusIndex;
@@ -555,7 +564,6 @@ function Tracking() {
                     currentStatusIndex;
 
                   return (
-
                     <div
                       className={`timeline-item ${
                         completed
@@ -570,16 +578,12 @@ function Tracking() {
                     >
 
                       <span className="timeline-dot">
-
                         {completed
                           ? "✓"
                           : ""}
-
                       </span>
 
-
                       <div>
-
                         <strong>
                           {step.label}
                         </strong>
@@ -588,19 +592,14 @@ function Tracking() {
                           {step.description}
                         </p>
 
-
                         {active && (
-
                           <small>
                             Current shipment status
                           </small>
-
                         )}
-
                       </div>
 
                     </div>
-
                   );
                 }
               )}
@@ -608,12 +607,9 @@ function Tracking() {
             </div>
 
 
-            {/* ==================================================
-                SHIPMENT UPDATE
-            ================================================== */}
+            {/* SHIPMENT UPDATE */}
 
             {shipment.status_note && (
-
               <div className="tracking-status-note">
 
                 <span>
@@ -631,14 +627,57 @@ function Tracking() {
                 </small>
 
               </div>
-
             )}
 
           </div>
-
         )}
 
       </section>
+
+
+      {/* ======================================================
+          DISPUTE FLOATING BUTTON
+          Only appears after a real shipment is loaded.
+      ====================================================== */}
+
+      {canDispute && (
+        <button
+          type="button"
+          className="shipment-dispute-fab"
+          onClick={() =>
+            navigate(
+              `/dispute/${shipment.shipment_id}`
+            )
+          }
+          aria-label="Report shipment issue"
+        >
+          <span className="shipment-dispute-fab-pulse" />
+
+          <span className="shipment-dispute-fab-icon">
+            <svg
+              viewBox="0 0 24 24"
+              fill="none"
+            >
+              <path
+                d="M12 8v4M12 16h.01"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+              />
+
+              <path
+                d="M10.3 4.5 3.6 16a2 2 0 0 0 1.74 3h13.32a2 2 0 0 0 1.74-3L13.7 4.5a2 2 0 0 0-3.4 0Z"
+                stroke="currentColor"
+                strokeWidth="2"
+              />
+            </svg>
+          </span>
+
+          <span className="shipment-dispute-fab-label">
+            Report Issue
+          </span>
+        </button>
+      )}
 
 
       {/* ======================================================
@@ -655,12 +694,10 @@ function Tracking() {
             }`
           }
         >
-
           <svg
             viewBox="0 0 24 24"
             fill="none"
           >
-
             <path
               d="M3 10.5L12 3L21 10.5V21H3V10.5Z"
               stroke="currentColor"
@@ -674,13 +711,11 @@ function Tracking() {
               strokeWidth="1.8"
               strokeLinejoin="round"
             />
-
           </svg>
 
           <span>
             Home
           </span>
-
         </NavLink>
 
 
@@ -692,12 +727,10 @@ function Tracking() {
             }`
           }
         >
-
           <svg
             viewBox="0 0 24 24"
             fill="none"
           >
-
             <path
               d="M4 7.5L12 3L20 7.5V16.5L12 21L4 16.5V7.5Z"
               stroke="currentColor"
@@ -717,13 +750,11 @@ function Tracking() {
               stroke="currentColor"
               strokeWidth="1.8"
             />
-
           </svg>
 
           <span>
             Shipments
           </span>
-
         </NavLink>
 
 
@@ -735,12 +766,10 @@ function Tracking() {
             }`
           }
         >
-
           <svg
             viewBox="0 0 24 24"
             fill="none"
           >
-
             <circle
               cx="12"
               cy="12"
@@ -756,13 +785,11 @@ function Tracking() {
               strokeLinecap="round"
               strokeLinejoin="round"
             />
-
           </svg>
 
           <span>
             Tracking
           </span>
-
         </NavLink>
 
 
@@ -774,12 +801,10 @@ function Tracking() {
             }`
           }
         >
-
           <svg
             viewBox="0 0 24 24"
             fill="none"
           >
-
             <path
               d="M4 19V11"
               stroke="currentColor"
@@ -807,13 +832,11 @@ function Tracking() {
               strokeWidth="1.8"
               strokeLinecap="round"
             />
-
           </svg>
 
           <span>
             Dashboard
           </span>
-
         </NavLink>
 
       </nav>

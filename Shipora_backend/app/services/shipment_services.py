@@ -18,7 +18,6 @@ from app.utils.fees import (
     AUTO_RELEASE_HOURS,
     POST_ASSIGNMENT_CANCELLATION_FEE_RATE,
 )
-from app.utils import paystack
 
 
 profile_service = ProfileService()
@@ -81,13 +80,6 @@ class ShipmentService:
         payer_user_id,
         session,
     ):
-        """
-        Vendor-paid shipments settle instantly from the vendor's
-        Shipora wallet balance.
-
-        Paystack is only used when funding the Shipora wallet.
-        """
-
         shipment = await self._get(
             shipment_id,
             session,
@@ -1081,17 +1073,18 @@ class ShipmentService:
             session,
         )
 
-        await notification_service.notify(
-            user_id=shipment.dispatcher_id,
-            type=NotificationType.DISPUTE,
-            title="Delivery disputed",
-            message=(
-                f"The vendor disputed '{shipment.item_name}': "
-                f"{reason}. Payout is on hold pending admin review."
-            ),
-            session=session,
-            shipment_id=shipment.shipment_id,
-        )
+        if shipment.dispatcher_id:
+            await notification_service.notify(
+                user_id=shipment.dispatcher_id,
+                type=NotificationType.DISPUTE,
+                title="Delivery disputed",
+                message=(
+                    f"The vendor disputed '{shipment.item_name}': "
+                    f"{reason}. Payout is on hold pending admin review."
+                ),
+                session=session,
+                shipment_id=shipment.shipment_id,
+            )
 
         return shipment
 
@@ -1104,7 +1097,9 @@ class ShipmentService:
         result = await session.execute(
             select(Shipment).where(
                 Shipment.status == ShipmentStatus.DELIVERED,
+                Shipment.auto_release_at.is_not(None),
                 Shipment.auto_release_at <= now,
+                Shipment.payment_status == PaymentStatus.HELD,
             )
         )
 
@@ -1129,11 +1124,33 @@ class ShipmentService:
         session,
     ):
         """
-        Escrow release credits the dispatcher's Shipora wallet.
-
-        The dispatcher can later withdraw the available wallet balance
-        to their saved bank account.
+        Release held payment to the assigned dispatcher
+        and complete the shipment.
         """
+
+        if not shipment.dispatcher_id:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Shipment has no assigned dispatcher.",
+            )
+
+        if shipment.payment_status != PaymentStatus.HELD:
+            if shipment.payment_status == PaymentStatus.RELEASED:
+                shipment.status = ShipmentStatus.COMPLETED
+                shipment.completed_at = (
+                    shipment.completed_at or datetime.now(timezone.utc)
+                )
+                shipment.auto_release_at = None
+
+                return await self._save(
+                    shipment,
+                    session,
+                )
+
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Shipment payment is not currently held.",
+            )
 
         dispatcher_profile = await profile_service.get_dispatcher_profile(
             shipment.dispatcher_id,
@@ -1146,19 +1163,19 @@ class ShipmentService:
                 "Assigned dispatcher profile missing.",
             )
 
-        shipment.status = ShipmentStatus.COMPLETED
-        shipment.completed_at = datetime.now(timezone.utc)
-        shipment.auto_release_at = None
-
-        session.add(shipment)
-        await session.commit()
-
         await wallet_service.release_to_dispatcher(
             shipment,
             session,
         )
 
-        await session.refresh(shipment)
+        shipment.status = ShipmentStatus.COMPLETED
+        shipment.completed_at = datetime.now(timezone.utc)
+        shipment.auto_release_at = None
+
+        shipment = await self._save(
+            shipment,
+            session,
+        )
 
         payout_naira = (
             shipment.delivery_fee - shipment.platform_commission
@@ -1282,6 +1299,12 @@ class ShipmentService:
         shipment,
         session,
     ):
+        if shipment.payment_status == PaymentStatus.RELEASED:
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "Payment has already been released and cannot be refunded.",
+            )
+
         await wallet_service.refund_to_vendor(
             shipment,
             session,
@@ -1291,6 +1314,7 @@ class ShipmentService:
         shipment.status = ShipmentStatus.CANCELLED
         shipment.dispute_resolution = "refund"
         shipment.dispute_resolved_at = datetime.now(timezone.utc)
+        shipment.auto_release_at = None
 
         shipment = await self._save(
             shipment,
@@ -1310,17 +1334,18 @@ class ShipmentService:
             shipment_id=shipment.shipment_id,
         )
 
-        await notification_service.notify(
-            user_id=shipment.dispatcher_id,
-            type=NotificationType.DISPUTE,
-            title="Dispute resolved: refunded to vendor",
-            message=(
-                f"Admin resolved the dispute for "
-                f"'{shipment.item_name}' in the vendor's favour."
-            ),
-            session=session,
-            shipment_id=shipment.shipment_id,
-        )
+        if shipment.dispatcher_id:
+            await notification_service.notify(
+                user_id=shipment.dispatcher_id,
+                type=NotificationType.DISPUTE,
+                title="Dispute resolved: refunded to vendor",
+                message=(
+                    f"Admin resolved the dispute for "
+                    f"'{shipment.item_name}' in the vendor's favour."
+                ),
+                session=session,
+                shipment_id=shipment.shipment_id,
+            )
 
         return shipment
 
