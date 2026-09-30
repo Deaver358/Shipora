@@ -6,9 +6,7 @@ function VerifyRole() {
 
   return (
     <main className="verify-role-page">
-
       <section className="verify-role-card">
-
         <div className="verify-role-eyebrow">
           <span></span>
           SHIPORA VERIFICATION
@@ -20,13 +18,11 @@ function VerifyRole() {
         </h1>
 
         <p className="verify-role-intro">
-          Before you can manage shipments, choose the role
-          you want to use. You can verify as a Vendor, Dispatch,
-          or both.
+          Choose the role you want to verify. You can verify as a Vendor,
+          Dispatch, or both.
         </p>
 
         <div className="verify-role-options">
-
           {/* VENDOR */}
 
           <button
@@ -61,25 +57,18 @@ function VerifyRole() {
             </div>
 
             <div className="verify-role-content">
-              <span className="verify-role-label">
-                VENDOR
-              </span>
+              <span className="verify-role-label">VENDOR</span>
 
-              <strong>
-                Create and manage shipments
-              </strong>
+              <strong>Create and manage shipments</strong>
 
               <p>
-                Create shipments, manage deliveries and
-                keep track of your outgoing packages.
+                Create shipments, manage deliveries and keep track of your
+                outgoing packages.
               </p>
             </div>
 
-            <span className="verify-role-arrow">
-              →
-            </span>
+            <span className="verify-role-arrow">→</span>
           </button>
-
 
           {/* DISPATCH */}
 
@@ -123,29 +112,21 @@ function VerifyRole() {
             </div>
 
             <div className="verify-role-content">
-              <span className="verify-role-label">
-                DISPATCH
-              </span>
+              <span className="verify-role-label">DISPATCH</span>
 
-              <strong>
-                Manage and deliver shipments
-              </strong>
+              <strong>Manage and deliver shipments</strong>
 
               <p>
-                Find available delivery jobs, manage
-                assigned shipments and update delivery status.
+                Find available delivery jobs, manage assigned shipments and
+                update delivery status.
               </p>
             </div>
 
-            <span className="verify-role-arrow">
-              →
-            </span>
+            <span className="verify-role-arrow">→</span>
           </button>
-
         </div>
 
-
-        {/* BOTH */}
+        {/* BOTH ROLES */}
 
         <button
           type="button"
@@ -156,17 +137,15 @@ function VerifyRole() {
           <span>→</span>
         </button>
 
-
         <div className="verify-role-note">
           <span>SECURE VERIFICATION</span>
 
           <p>
-            Verification gives you access only to the
-            Shipora features associated with the role you
-            have been approved for.
+            Verification gives you access to the Shipora features associated
+            with each role after the required verification checks are
+            completed.
           </p>
         </div>
-
 
         <button
           type="button"
@@ -175,9 +154,7 @@ function VerifyRole() {
         >
           ← Back to Home
         </button>
-
       </section>
-
     </main>
   );
 }

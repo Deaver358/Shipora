@@ -58,28 +58,53 @@ const STATUS_CONTENT = {
   },
 
   vendorVerificationPending: {
-  label: "VERIFICATION UNDER REVIEW",
-  title: "Vendor verification submitted.",
-  message:
-    "Your vendor information has been submitted for review. Your account will remain pending until Shipora completes the verification process.",
-  button: "Continue",
-},
+    label: "VERIFICATION SUBMITTED",
+    title: "Vendor verification submitted.",
+    message:
+      "Your vendor information has been submitted successfully. Your NIN verification is being processed. You will receive access to the Vendor Workspace once the required verification is completed.",
+    button: "Continue",
+  },
 
-dispatchVerificationPending: {
-  label: "VERIFICATION UNDER REVIEW",
-  title: "Dispatch verification submitted.",
-  message:
-    "Your dispatch information has been submitted for review. Your dispatch access will remain pending until Shipora completes the verification process.",
-  button: "Continue",
-},
+  dispatchVerificationPending: {
+    label: "VERIFICATION SUBMITTED",
+    title: "Dispatcher verification submitted.",
+    message:
+      "Your dispatcher information has been submitted successfully. Your NIN and vehicle verification are being processed. Dispatcher Workspace access will remain locked until the required verification is completed.",
+    button: "Continue",
+  },
 
-bothVerificationPending: {
-  label: "VERIFICATION UNDER REVIEW",
-  title: "Both verification requests submitted.",
-  message:
-    "Your Vendor and Dispatch information has been submitted for review. Each role will receive its own verification decision.",
-  button: "Continue",
-},
+  bothVerificationPending: {
+    label: "VERIFICATION SUBMITTED",
+    title: "Verification submitted.",
+    message:
+      "Your Vendor and Dispatcher information has been submitted successfully. Vendor access depends on NIN verification, while Dispatcher access also requires vehicle verification.",
+    button: "Continue",
+  },
+
+  verificationReviewRequired: {
+    label: "MANUAL REVIEW REQUIRED",
+    title: "Your verification needs review.",
+    message:
+      "Your verification could not be completed automatically and has been sent to the Shipora verification team for manual review. You do not need to submit the information again unless requested.",
+    button: "Continue",
+  },
+
+  verificationRejected: {
+    label: "VERIFICATION NOT APPROVED",
+    title: "Verification was not approved.",
+    message:
+      "The submitted verification information could not be approved. Please review the information provided and follow the instructions available in your verification section.",
+    button: "Continue",
+    isError: true,
+  },
+
+  verificationVerified: {
+    label: "VERIFIED",
+    title: "Verification successful.",
+    message:
+      "Your verification has been completed successfully. Your available Shipora access will update according to your verified role.",
+    button: "Continue",
+  },
 
   error: {
     label: "SOMETHING WENT WRONG",

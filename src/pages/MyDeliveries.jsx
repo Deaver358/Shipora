@@ -490,7 +490,7 @@ function MyDeliveries() {
 
         <button
           className="bottom-nav-item active"
-          onClick={() => navigate("/Shipments")}
+          onClick={() => navigate("/shipments")}
         >
           <svg viewBox="0 0 24 24" fill="none">
 

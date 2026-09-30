@@ -11,7 +11,7 @@ import ResetPassword from "./pages/ResetPassword";
 
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
-import AdminVehicleKYC from "./pages/AdminVehicleKYC";
+import AdminKYC from "./pages/AdminKYC";
 import AdminDisputes from "./pages/AdminDisputes";
 import Rating from "./pages/Rating";
 import Checkout from "./pages/Checkout";
@@ -64,7 +64,7 @@ function App() {
         <Route path="/rejected" element={<Rejected />} />
         <Route path="/verified" element={<Verified />} />
         <Route path="/rating" element={<Rating />} />
-        <Route path="/admin/vehicle-kyc" element={<AdminVehicleKYC />} />
+        <Route path="/admin-kyc" element={<AdminKYC />} />
 <Route path="/admin/disputes" element={<AdminDisputes />} />
 
 <Route path="/checkout/:token" element={<Checkout />} />

@@ -3,10 +3,15 @@ import { useNavigate } from "react-router-dom";
 import AuthStatusModal from "../components/AuthStatusModal";
 import "../index.css";
 
+const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1.0";
+
 function VerifyBoth() {
   const navigate = useNavigate();
 
   const [showModal, setShowModal] = useState(false);
+  const [error, setError] = useState("");
+  const [submitting, setSubmitting] = useState(false);
 
   const [formData, setFormData] = useState({
     firstName: "",
@@ -48,35 +53,96 @@ function VerifyBoth() {
     }));
   };
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
-    /*
-      FRONTEND PROTOTYPE ONLY
+    setError("");
+    setSubmitting(true);
 
-      This does not perform real NIN, CAC,
-      driver's licence or vehicle verification.
+    const payload = {
+      first_name: formData.firstName.trim(),
+      middle_name: formData.middleName.trim(),
+      surname: formData.surname.trim(),
+      date_of_birth: formData.dateOfBirth,
+      phone: formData.phone.trim(),
+      email: formData.email.trim(),
+      nationality: formData.nationality.trim(),
+      state: formData.state.trim(),
+      lga: formData.lga.trim(),
+      address: formData.address.trim(),
+      nin: formData.nin.trim(),
 
-      Both roles are submitted separately for
-      review after the form is completed.
-    */
+      vendor_type: formData.vendorType,
+      business_name: formData.businessName.trim(),
+      cac_number: formData.cacNumber.trim(),
+      business_type: formData.businessType.trim(),
+      business_phone: formData.businessPhone.trim(),
+      business_email: formData.businessEmail.trim(),
+      business_address: formData.businessAddress.trim(),
 
-    setShowModal(true);
+      dispatch_name: formData.dispatchName.trim(),
+      operating_state: formData.operatingState.trim(),
+      operating_city: formData.operatingCity.trim(),
+      service_area: formData.serviceArea.trim(),
+      vehicle_type: formData.vehicleType,
+      vehicle_registration: formData.vehicleRegistration.trim(),
+      is_driver: formData.isDriver === "yes",
+      licence_number: formData.licenceNumber.trim(),
+    };
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/both/verify`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        credentials: "include",
+        body: JSON.stringify(payload),
+      });
+
+      const responseData = await response.json().catch(() => null);
+
+      if (!response.ok) {
+        const detail = responseData?.detail;
+
+        if (Array.isArray(detail)) {
+          setError(
+            detail
+              .map((item) => item?.msg || "Invalid verification information.")
+              .join(" ")
+          );
+        } else {
+          setError(
+            detail ||
+              responseData?.message ||
+              "Verification could not be submitted. Please check your information and try again."
+          );
+        }
+
+        return;
+      }
+
+      setShowModal(true);
+    } catch (requestError) {
+      console.error("Both roles verification error:", requestError);
+
+      setError(
+        "Unable to connect to Shipora. Please make sure the backend is running and try again."
+      );
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   const handleModalClose = () => {
     setShowModal(false);
-
     navigate("/shipments");
   };
 
   return (
     <main className="verification-page">
-
       <section className="verification-shell">
-
         <div className="verification-top">
-
           <button
             type="button"
             className="verification-back-link"
@@ -89,27 +155,18 @@ function VerifyBoth() {
             <span></span>
             SHIPORA ROLE VERIFICATION
           </div>
-
         </div>
-
 
         <div className="verification-header">
-
-          <h1>
-            Verify both Shipora roles.
-          </h1>
+          <h1>Verify both Shipora roles.</h1>
 
           <p>
-            Complete your identity once, then provide the
-            information required for both vendor and dispatch
-            verification.
+            Complete your identity once, then provide the information required
+            for both Vendor and Dispatch access.
           </p>
-
         </div>
 
-
         <div className="verification-progress">
-
           <div className="verification-progress-item active">
             <span>01</span>
             <p>Identity</p>
@@ -135,52 +192,30 @@ function VerifyBoth() {
             <span>04</span>
             <p>Submit</p>
           </div>
-
         </div>
 
-
-        <form
-          className="verification-form"
-          onSubmit={handleSubmit}
-        >
-
+        <form className="verification-form" onSubmit={handleSubmit}>
           {/* PERSONAL IDENTITY */}
 
           <section className="verification-section">
-
             <div className="verification-section-heading">
-
-              <div className="verification-section-number">
-                01
-              </div>
+              <div className="verification-section-number">01</div>
 
               <div>
+                <span>PERSONAL IDENTITY</span>
 
-                <span>
-                  PERSONAL IDENTITY
-                </span>
-
-                <h2>
-                  Verify your identity once.
-                </h2>
+                <h2>Verify your identity once.</h2>
 
                 <p>
-                  Your identity information can support both
-                  your Vendor and Dispatch roles.
+                  Your identity information can support both your Vendor and
+                  Dispatch roles.
                 </p>
-
               </div>
-
             </div>
 
-
             <div className="verification-grid">
-
               <div className="verification-field">
-
-                <label>
-                  Legal First Name
-                </label>
+                <label>Legal First Name</label>
 
                 <input
                   type="text"
@@ -190,12 +225,9 @@ function VerifyBoth() {
                   placeholder="Enter your first name"
                   required
                 />
-
               </div>
 
-
               <div className="verification-field">
-
                 <label>
                   Middle Name
                   <small>Optional</small>
@@ -208,15 +240,10 @@ function VerifyBoth() {
                   onChange={handleChange}
                   placeholder="Enter your middle name"
                 />
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  Legal Surname
-                </label>
+                <label>Legal Surname</label>
 
                 <input
                   type="text"
@@ -226,15 +253,10 @@ function VerifyBoth() {
                   placeholder="Enter your surname"
                   required
                 />
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  Date of Birth
-                </label>
+                <label>Date of Birth</label>
 
                 <input
                   type="date"
@@ -243,15 +265,10 @@ function VerifyBoth() {
                   onChange={handleChange}
                   required
                 />
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  Phone Number
-                </label>
+                <label>Phone Number</label>
 
                 <input
                   type="tel"
@@ -261,15 +278,10 @@ function VerifyBoth() {
                   placeholder="+234 800 000 0000"
                   required
                 />
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  Email Address
-                </label>
+                <label>Email Address</label>
 
                 <input
                   type="email"
@@ -279,15 +291,10 @@ function VerifyBoth() {
                   placeholder="you@example.com"
                   required
                 />
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  Nationality
-                </label>
+                <label>Nationality</label>
 
                 <input
                   type="text"
@@ -296,15 +303,10 @@ function VerifyBoth() {
                   onChange={handleChange}
                   required
                 />
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  State of Residence
-                </label>
+                <label>State of Residence</label>
 
                 <input
                   type="text"
@@ -314,15 +316,10 @@ function VerifyBoth() {
                   placeholder="e.g. Lagos"
                   required
                 />
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  Local Government Area
-                </label>
+                <label>Local Government Area</label>
 
                 <input
                   type="text"
@@ -332,15 +329,10 @@ function VerifyBoth() {
                   placeholder="Enter your LGA"
                   required
                 />
-
               </div>
 
-
               <div className="verification-field verification-field-full">
-
-                <label>
-                  Residential Address
-                </label>
+                <label>Residential Address</label>
 
                 <input
                   type="text"
@@ -350,12 +342,9 @@ function VerifyBoth() {
                   placeholder="Enter your residential address"
                   required
                 />
-
               </div>
 
-
               <div className="verification-field verification-field-full">
-
                 <label>
                   National Identification Number
                   <small>Private</small>
@@ -372,54 +361,34 @@ function VerifyBoth() {
                 />
 
                 <p className="verification-field-note">
-                  Your NIN is used only for verification.
-                  Never share it publicly.
+                  Your NIN is used only for verification. Never share it
+                  publicly.
                 </p>
-
               </div>
-
             </div>
-
           </section>
-
 
           {/* VENDOR INFORMATION */}
 
           <section className="verification-section">
-
             <div className="verification-section-heading">
-
-              <div className="verification-section-number">
-                02
-              </div>
+              <div className="verification-section-number">02</div>
 
               <div>
+                <span>VENDOR VERIFICATION</span>
 
-                <span>
-                  VENDOR VERIFICATION
-                </span>
-
-                <h2>
-                  Tell us about your business.
-                </h2>
+                <h2>Tell us about your business.</h2>
 
                 <p>
-                  Provide the information needed to review
-                  your Vendor role.
+                  Provide the information needed for your Vendor role. CAC
+                  registration is optional.
                 </p>
-
               </div>
-
             </div>
 
-
             <div className="verification-grid">
-
               <div className="verification-field verification-field-full">
-
-                <label>
-                  Vendor Type
-                </label>
+                <label>Vendor Type</label>
 
                 <select
                   name="vendorType"
@@ -427,10 +396,7 @@ function VerifyBoth() {
                   onChange={handleChange}
                   required
                 >
-
-                  <option value="">
-                    Select vendor type
-                  </option>
+                  <option value="">Select vendor type</option>
 
                   <option value="individual">
                     Individual / Sole Proprietor
@@ -440,20 +406,12 @@ function VerifyBoth() {
                     Registered Business
                   </option>
 
-                  <option value="company">
-                    Company
-                  </option>
-
+                  <option value="company">Company</option>
                 </select>
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  Business Name
-                </label>
+                <label>Business Name</label>
 
                 <input
                   type="text"
@@ -463,15 +421,10 @@ function VerifyBoth() {
                   placeholder="Enter your business name"
                   required
                 />
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  Business Type
-                </label>
+                <label>Business Type</label>
 
                 <input
                   type="text"
@@ -481,15 +434,12 @@ function VerifyBoth() {
                   placeholder="e.g. Retail, Fashion, Food"
                   required
                 />
-
               </div>
 
-
               <div className="verification-field">
-
                 <label>
                   CAC Registration Number
-                  <small>Where applicable</small>
+                  <small>Optional</small>
                 </label>
 
                 <input
@@ -499,14 +449,12 @@ function VerifyBoth() {
                   onChange={handleChange}
                   placeholder="Enter CAC registration number"
                 />
-
               </div>
 
-
               <div className="verification-field">
-
                 <label>
                   Business Phone Number
+                  <small>Optional</small>
                 </label>
 
                 <input
@@ -516,12 +464,9 @@ function VerifyBoth() {
                   onChange={handleChange}
                   placeholder="+234 800 000 0000"
                 />
-
               </div>
 
-
               <div className="verification-field verification-field-full">
-
                 <label>
                   Business Email
                   <small>Optional</small>
@@ -534,15 +479,10 @@ function VerifyBoth() {
                   onChange={handleChange}
                   placeholder="business@example.com"
                 />
-
               </div>
 
-
               <div className="verification-field verification-field-full">
-
-                <label>
-                  Business Address
-                </label>
+                <label>Business Address</label>
 
                 <textarea
                   name="businessAddress"
@@ -552,51 +492,31 @@ function VerifyBoth() {
                   rows="4"
                   required
                 />
-
               </div>
-
             </div>
-
           </section>
-
 
           {/* DISPATCH INFORMATION */}
 
           <section className="verification-section">
-
             <div className="verification-section-heading">
-
-              <div className="verification-section-number">
-                03
-              </div>
+              <div className="verification-section-number">03</div>
 
               <div>
+                <span>DISPATCH VERIFICATION</span>
 
-                <span>
-                  DISPATCH VERIFICATION
-                </span>
-
-                <h2>
-                  Tell us about your delivery operation.
-                </h2>
+                <h2>Tell us about your delivery operation.</h2>
 
                 <p>
-                  Provide the information required to review
-                  your Dispatch role.
+                  Your Dispatch role requires NIN verification and vehicle
+                  verification before Dispatch workspace access.
                 </p>
-
               </div>
-
             </div>
 
-
             <div className="verification-grid">
-
               <div className="verification-field verification-field-full">
-
-                <label>
-                  Dispatch / Business Name
-                </label>
+                <label>Dispatch / Business Name</label>
 
                 <input
                   type="text"
@@ -606,15 +526,10 @@ function VerifyBoth() {
                   placeholder="Enter your dispatch or business name"
                   required
                 />
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  Operating State
-                </label>
+                <label>Operating State</label>
 
                 <input
                   type="text"
@@ -624,15 +539,10 @@ function VerifyBoth() {
                   placeholder="e.g. Lagos"
                   required
                 />
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  Operating City
-                </label>
+                <label>Operating City</label>
 
                 <input
                   type="text"
@@ -642,15 +552,10 @@ function VerifyBoth() {
                   placeholder="e.g. Ikeja"
                   required
                 />
-
               </div>
 
-
               <div className="verification-field verification-field-full">
-
-                <label>
-                  Service Area
-                </label>
+                <label>Service Area</label>
 
                 <input
                   type="text"
@@ -660,15 +565,10 @@ function VerifyBoth() {
                   placeholder="Describe the areas where you operate"
                   required
                 />
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  Vehicle Type
-                </label>
+                <label>Vehicle Type</label>
 
                 <select
                   name="vehicleType"
@@ -676,46 +576,24 @@ function VerifyBoth() {
                   onChange={handleChange}
                   required
                 >
+                  <option value="">Select vehicle type</option>
 
-                  <option value="">
-                    Select vehicle type
-                  </option>
+                  <option value="bicycle">Bicycle</option>
 
-                  <option value="bicycle">
-                    Bicycle
-                  </option>
+                  <option value="motorcycle">Motorcycle</option>
 
-                  <option value="motorcycle">
-                    Motorcycle
-                  </option>
+                  <option value="car">Car</option>
 
-                  <option value="car">
-                    Car
-                  </option>
+                  <option value="van">Van</option>
 
-                  <option value="van">
-                    Van
-                  </option>
+                  <option value="truck">Truck</option>
 
-                  <option value="truck">
-                    Truck
-                  </option>
-
-                  <option value="other">
-                    Other
-                  </option>
-
+                  <option value="other">Other</option>
                 </select>
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  Vehicle Registration Number
-                  <small>Where applicable</small>
-                </label>
+                <label>Vehicle Registration Number</label>
 
                 <input
                   type="text"
@@ -723,16 +601,12 @@ function VerifyBoth() {
                   value={formData.vehicleRegistration}
                   onChange={handleChange}
                   placeholder="Enter vehicle registration"
+                  required
                 />
-
               </div>
 
-
               <div className="verification-field">
-
-                <label>
-                  Will you personally drive?
-                </label>
+                <label>Will you personally drive?</label>
 
                 <select
                   name="isDriver"
@@ -740,29 +614,18 @@ function VerifyBoth() {
                   onChange={handleChange}
                   required
                 >
+                  <option value="">Select an option</option>
 
-                  <option value="">
-                    Select an option
-                  </option>
+                  <option value="yes">Yes</option>
 
-                  <option value="yes">
-                    Yes
-                  </option>
-
-                  <option value="no">
-                    No
-                  </option>
-
+                  <option value="no">No</option>
                 </select>
-
               </div>
 
-
               <div className="verification-field">
-
                 <label>
                   Driver's Licence Number
-                  <small>Where applicable</small>
+                  <small>Optional</small>
                 </label>
 
                 <input
@@ -772,142 +635,105 @@ function VerifyBoth() {
                   onChange={handleChange}
                   placeholder="Enter licence number"
                 />
-
               </div>
-
             </div>
-
           </section>
-
 
           {/* REVIEW */}
 
           <section className="verification-section verification-review-section">
-
             <div className="verification-section-heading">
-
-              <div className="verification-section-number">
-                04
-              </div>
+              <div className="verification-section-number">04</div>
 
               <div>
+                <span>REVIEW & SUBMIT</span>
 
-                <span>
-                  REVIEW & SUBMIT
-                </span>
-
-                <h2>
-                  Submit both roles for review.
-                </h2>
+                <h2>Submit both roles for verification.</h2>
 
                 <p>
-                  Your Vendor and Dispatch information will
-                  be submitted for review separately. Approval
-                  of one role does not automatically approve
-                  the other.
+                  Your Vendor and Dispatch information will be submitted
+                  together. Each role keeps its own verification status.
                 </p>
-
               </div>
-
             </div>
-
 
             <div className="verification-review-box">
-
-              <div className="verification-review-icon">
-                ✓
-              </div>
+              <div className="verification-review-icon">✓</div>
 
               <div>
-
-                <strong>
-                  Vendor: Not submitted
-                </strong>
+                <strong>Vendor verification</strong>
 
                 <p>
-                  Vendor verification will move to pending
-                  review after submission.
+                  NIN is required. CAC is optional and does not block Vendor
+                  access.
                 </p>
-
               </div>
-
             </div>
-
 
             <div className="verification-review-box">
-
-              <div className="verification-review-icon">
-                ✓
-              </div>
+              <div className="verification-review-icon">✓</div>
 
               <div>
-
-                <strong>
-                  Dispatch: Not submitted
-                </strong>
+                <strong>Dispatch verification</strong>
 
                 <p>
-                  Dispatch verification will move to pending
-                  review after submission.
+                  NIN and vehicle verification are required before Dispatch
+                  workspace access.
                 </p>
-
               </div>
-
             </div>
 
+            {error && (
+              <div
+                className="verification-error"
+                role="alert"
+                style={{ marginTop: "20px" }}
+              >
+                {error}
+              </div>
+            )}
           </section>
 
-
           <div className="verification-actions">
-
             <button
               type="button"
               className="verification-secondary-button"
               onClick={() => navigate("/verify-role")}
+              disabled={submitting}
             >
               ← Back
             </button>
 
-
             <button
               type="submit"
               className="verification-primary-button"
+              disabled={submitting}
             >
-              Submit Both for Verification
+              {submitting
+                ? "Submitting..."
+                : "Submit Both for Verification"}
+
               <span>→</span>
             </button>
-
           </div>
-
         </form>
 
-
         <div className="verification-security-note">
-
-          <div className="verification-security-icon">
-            🔒
-          </div>
+          <div className="verification-security-icon">🔒</div>
 
           <p>
-            Your identity information is collected once and
-            can support both Shipora roles. Each role will
-            still have its own verification status.
+            Your identity information is collected once and can support both
+            Shipora roles. Each role maintains its own verification status.
           </p>
-
         </div>
-
       </section>
 
-
       {showModal && (
-
         <AuthStatusModal
           type="bothVerificationPending"
           onClose={handleModalClose}
         />
-
       )}
-
     </main>
   );
 }

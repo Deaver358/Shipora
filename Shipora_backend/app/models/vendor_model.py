@@ -15,6 +15,7 @@ class VerificationStatus(str, Enum):
     PENDING = "pending"
     VERIFIED = "verified"
     REJECTED = "rejected"
+    REVIEW_REQUIRED = "review_required"
 
 
 class Vendor(SQLModel, table=True):
@@ -248,3 +249,4 @@ class Vendor(SQLModel, table=True):
             nullable=False,
         ),
     )
+

@@ -24,3 +24,7 @@ dist-ssr
 *.sw?
 .env
 shipora-backend/.env
+.env.local
+
+__pycache__/
+*.pyc

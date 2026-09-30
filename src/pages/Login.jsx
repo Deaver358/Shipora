@@ -29,7 +29,7 @@ function Login() {
 
     try {
       const loginData = {
-        email,
+        email: email.trim(),
         password,
       };
 
@@ -80,13 +80,27 @@ function Login() {
     }
   };
 
+  const handleModalClose = () => {
+    if (modalType === "loginSuccess") {
+      closeModal();
+
+      /*
+       * Verification is intentionally handled after authentication.
+       * The protected workspace/profile flow determines whether the
+       * user is already verified or needs to complete verification.
+       */
+      navigate("/");
+      return;
+    }
+
+    closeModal();
+  };
+
   return (
     <main className="auth-page">
-
       <div className="auth-background"></div>
 
       <section className="auth-card">
-
         {/* Brand */}
         <Link to="/" className="auth-brand">
           <img src={logo} alt="SHIPORA" />
@@ -104,30 +118,21 @@ function Login() {
           <h1>Sign in to SHIPORA.</h1>
 
           <p>
-            Access your deliveries, shipments and
-            SHIPORA services.
+            Access your deliveries, shipments and SHIPORA services.
           </p>
         </div>
 
         {/* Login Form */}
-        <form
-          className="auth-form"
-          onSubmit={handleLogin}
-        >
-
+        <form className="auth-form" onSubmit={handleLogin}>
           {/* Email */}
           <div className="auth-form-field">
-            <label htmlFor="login-email">
-              Email Address
-            </label>
+            <label htmlFor="login-email">Email Address</label>
 
             <input
               id="login-email"
               type="email"
               value={email}
-              onChange={(event) => {
-                setEmail(event.target.value);
-              }}
+              onChange={(event) => setEmail(event.target.value)}
               placeholder="you@example.com"
               autoComplete="email"
               required
@@ -136,11 +141,8 @@ function Login() {
 
           {/* Password */}
           <div className="auth-form-field">
-
             <div className="auth-label-row">
-              <label htmlFor="login-password">
-                Password
-              </label>
+              <label htmlFor="login-password">Password</label>
 
               <Link
                 to="/forgot-password"
@@ -154,9 +156,7 @@ function Login() {
               id="login-password"
               type="password"
               value={password}
-              onChange={(event) => {
-                setPassword(event.target.value);
-              }}
+              onChange={(event) => setPassword(event.target.value)}
               placeholder="Enter your password"
               autoComplete="current-password"
               required
@@ -173,7 +173,6 @@ function Login() {
 
             {!loading && <span>→</span>}
           </button>
-
         </form>
 
         {/* Divider */}
@@ -188,7 +187,6 @@ function Login() {
           onClick={handleGoogleLogin}
           disabled={loading || googleLoading}
         >
-
           <span className="google-icon">
             <svg
               viewBox="0 0 24 24"
@@ -224,54 +222,32 @@ function Login() {
         {/* Signup */}
         <p className="auth-switch">
           Don't have a SHIPORA account?{" "}
-
-          <Link to="/signup">
-            Create account
-          </Link>
+          <Link to="/signup">Create account</Link>
         </p>
 
         {/* Legal */}
         <p className="auth-legal">
           By continuing, you agree to SHIPORA's{" "}
-
-          <Link to="/terms">
-            Terms of Service
-          </Link>{" "}
-
+          <Link to="/terms">Terms of Service</Link>{" "}
           and{" "}
-
-          <Link to="/privacy">
-            Privacy Policy
-          </Link>.
+          <Link to="/privacy">Privacy Policy</Link>.
         </p>
-
       </section>
 
       {/* Footer */}
       <footer className="auth-footer">
         <span>SHIPORA</span>
 
-        <p>
-          Logistics &amp; Forwarding
-        </p>
+        <p>Logistics &amp; Forwarding</p>
       </footer>
 
       {/* Authentication Status Modal */}
       {modalType && (
         <AuthStatusModal
           type={modalType}
-          onClose={() => {
-            if (modalType === "loginSuccess") {
-              closeModal();
-              navigate("/");
-              return;
-            }
-
-            closeModal();
-          }}
+          onClose={handleModalClose}
         />
       )}
-
     </main>
   );
 }

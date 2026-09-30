@@ -1,5 +1,6 @@
 import shiporaLogo from "../assets/shipora-logo.jpeg";
 import { useNavigate, NavLink } from "react-router-dom";
+import VerificationPrompt from "../components/VerificationPrompt";
 import "../index.css";
 
 function BellIcon() {
@@ -541,6 +542,8 @@ function Home() {
           </button>
 
         </section>
+
+        <VerificationPrompt />
 
       </main>
 

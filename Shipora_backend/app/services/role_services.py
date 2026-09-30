@@ -7,466 +7,529 @@ from sqlalchemy import select
 from fastapi.exceptions import HTTPException
 from fastapi import status
 
+
 class RoleService:
 
+    # ============================================================
+    # DUPLICATE HELPERS
+    # ============================================================
 
     async def vendor_withemail_exists(self, email: str, vendor: bool, session: AsyncSession):
         model = Vendor if vendor else Dispatcher
-        email_result = await session.execute(
-            select(model).where(
-                model.email == email
-            )
-        )
-        existing_email = email_result.scalar_one_or_none()
-        return existing_email
-
+        result = await session.execute(select(model).where(model.email == email))
+        return result.scalar_one_or_none()
 
     async def vendor_withphone_exists(self, phone: str, vendor: bool, session: AsyncSession):
         model = Vendor if vendor else Dispatcher
-        phone_result = await session.execute(
-            select(model).where(
-                model.phone == phone
-            )
-        )
-        existing_phone = phone_result.scalar_one_or_none()
-        return existing_phone
-
+        result = await session.execute(select(model).where(model.phone == phone))
+        return result.scalar_one_or_none()
 
     async def vendor_withnin_exists(self, nin: str, vendor: bool, session: AsyncSession):
         model = Vendor if vendor else Dispatcher
-        nin_result = await session.execute(
-            select(model).where(
-                model.nin == nin
-            )
-        )
-        existing_nin = nin_result.scalar_one_or_none()
-        return existing_nin
-
+        result = await session.execute(select(model).where(model.nin == nin))
+        return result.scalar_one_or_none()
 
     async def vendor_withcac_exists(self, cac: str, vendor: bool, session: AsyncSession):
         model = Vendor if vendor else Dispatcher
-        cac_result = await session.execute(
-            select(model).where(
-                model.cac_number == cac
-            )
+        result = await session.execute(select(model).where(model.cac_number == cac))
+        return result.scalar_one_or_none()
+
+    async def both_withemail_exists(self, email: str, session: AsyncSession):
+        result = await session.execute(select(BothRoles).where(BothRoles.email == email))
+        return result.scalar_one_or_none()
+
+    async def both_withphone_exists(self, phone: str, session: AsyncSession):
+        result = await session.execute(select(BothRoles).where(BothRoles.phone == phone))
+        return result.scalar_one_or_none()
+
+    async def both_withnin_exists(self, nin: str, session: AsyncSession):
+        result = await session.execute(select(BothRoles).where(BothRoles.nin == nin))
+        return result.scalar_one_or_none()
+
+    async def both_withcac_exists(self, cac: str, session: AsyncSession):
+        if not cac:
+            return None
+
+        result = await session.execute(
+            select(BothRoles).where(BothRoles.cac_number == cac)
         )
-        existing_cac = cac_result.scalar_one_or_none()
-        return existing_cac
+        return result.scalar_one_or_none()
 
+    # ============================================================
+    # PROVIDER VERIFICATION
+    # ============================================================
 
-    async def create_vendor(self, data: VendorCreate, user_id, session: AsyncSession):
-        # a user can only verify as a vendor once
-        existing_for_user = await session.execute(
+    async def _provider_verify(
+        self,
+        endpoint: str,
+        payload: dict,
+    ) -> tuple[str, str | None]:
+
+        from app.utils.config import settings
+        import httpx
+
+        if not endpoint:
+            # No real provider connected yet.
+            # Never pretend the person is verified.
+            return "pending", None
+
+        headers = {}
+
+        if settings.KYC_PROVIDER_API_KEY:
+            headers["Authorization"] = (
+                f"Bearer {settings.KYC_PROVIDER_API_KEY}"
+            )
+
+        try:
+            async with httpx.AsyncClient(timeout=30) as client:
+                response = await client.post(
+                    endpoint,
+                    json=payload,
+                    headers=headers,
+                )
+
+            response.raise_for_status()
+            body = response.json()
+
+        except Exception:
+            return "review_required", None
+
+        raw_status = str(
+            body.get("status")
+            or body.get("verification_status")
+            or body.get("data", {}).get("status")
+            or ""
+        ).lower()
+
+        verified = bool(
+            body.get("verified")
+            or body.get("data", {}).get("verified")
+        )
+
+        reference = (
+            body.get("reference")
+            or body.get("id")
+            or body.get("data", {}).get("reference")
+            or body.get("data", {}).get("id")
+        )
+
+        if verified or raw_status in {"verified", "success", "approved"}:
+            return "verified", reference
+
+        if raw_status in {
+            "rejected",
+            "failed",
+            "invalid",
+            "declined",
+        }:
+            return "rejected", reference
+
+        if raw_status in {
+            "review_required",
+            "review",
+            "manual_review",
+            "pending_review",
+        }:
+            return "review_required", reference
+
+        return "pending", reference
+
+    async def verify_nin(
+        self,
+        nin: str,
+        first_name: str,
+        surname: str,
+    ):
+        from app.utils.config import settings
+
+        if not nin:
+            return "rejected", None
+
+        endpoint = ""
+
+        if settings.KYC_PROVIDER_BASE_URL:
+            endpoint = (
+                f"{settings.KYC_PROVIDER_BASE_URL.rstrip('/')}/nin"
+            )
+
+        return await self._provider_verify(
+            endpoint,
+            {
+                "nin": nin,
+                "first_name": first_name,
+                "surname": surname,
+            },
+        )
+
+    async def verify_cac(
+        self,
+        cac_number: str,
+        business_name: str,
+    ):
+        from app.utils.config import settings
+
+        if not cac_number:
+            return "pending", None
+
+        endpoint = ""
+
+        if settings.KYC_PROVIDER_BASE_URL:
+            endpoint = (
+                f"{settings.KYC_PROVIDER_BASE_URL.rstrip('/')}/cac"
+            )
+
+        return await self._provider_verify(
+            endpoint,
+            {
+                "cac_number": cac_number,
+                "business_name": business_name,
+            },
+        )
+
+    async def verify_drivers_licence(
+        self,
+        licence_number: str,
+        first_name: str,
+        surname: str,
+    ):
+        from app.utils.config import settings
+
+        if not licence_number:
+            return "rejected", None
+
+        endpoint = ""
+
+        if settings.KYC_PROVIDER_BASE_URL:
+            endpoint = (
+                f"{settings.KYC_PROVIDER_BASE_URL.rstrip('/')}/drivers-license"
+            )
+
+        return await self._provider_verify(
+            endpoint,
+            {
+                "licence_number": licence_number,
+                "first_name": first_name,
+                "surname": surname,
+            },
+        )
+
+    # ============================================================
+    # VENDOR
+    # ============================================================
+
+    async def create_vendor(
+        self,
+        data: VendorCreate,
+        user_id,
+        session: AsyncSession,
+    ):
+
+        existing = await session.execute(
             select(Vendor).where(Vendor.user_id == user_id)
         )
-        if existing_for_user.scalar_one_or_none():
+
+        if existing.scalar_one_or_none():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This account has already been verified as a vendor.",
             )
 
-        existing_email = await self.vendor_withemail_exists(email=data.email, vendor=True, session=session)
-    
-        if existing_email:
+        if await self.vendor_withemail_exists(data.email, True, session):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A vendor with this email already exists.",
             )
-    
-        # --------------------------------------------------------
-        # Check phone
-        # --------------------------------------------------------
-    
-        existing_phone = await self.vendor_withphone_exists(phone=data.phone, vendor=True, session=session)
 
-
-        if existing_phone:
+        if await self.vendor_withphone_exists(data.phone, True, session):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A vendor with this phone number already exists.",
             )
-    
-        # --------------------------------------------------------
-        # Check NIN already registered
-        # --------------------------------------------------------
-    
-        existing_nin = await self.vendor_withnin_exists(nin=data.nin, vendor=True, session=session)
-    
-    
-        if existing_nin:
+
+        if await self.vendor_withnin_exists(data.nin, True, session):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This NIN is already registered.",
             )
-    
-        # --------------------------------------------------------
-        # VERIFY NIN
-        # --------------------------------------------------------
-    
-        nin_verified = await self.verify_nin(
-            nin=data.nin,
-            first_name=data.first_name,
-            surname=data.surname,
-        )
-    
-        if not nin_verified:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="NIN verification failed.",
-            )
 
-        nin_status = VendorVerificationStatus.VERIFIED
-    
-        # --------------------------------------------------------
-        # VERIFY CAC
-        # --------------------------------------------------------
-    
-        # If your vendor requires CAC registration
+        # ---------------- NIN ----------------
+
+        nin_result, nin_ref = await self.verify_nin(
+            data.nin,
+            data.first_name,
+            data.surname,
+        )
+
+        nin_status = VendorVerificationStatus(nin_result)
+
+        # ---------------- CAC ----------------
+
         cac_status = VendorVerificationStatus.PENDING
+        cac_ref = None
+
         if data.cac_number:
-    
-            existing_cac = await self.vendor_withcac_exists(cac=data.cac_number, vendor=True, session=session)
-    
-            if existing_cac:
+
+            if await self.vendor_withcac_exists(
+                data.cac_number,
+                True,
+                session,
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="This CAC number is already registered.",
                 )
-    
-            cac_verified = await self.verify_cac(
-                cac_number=data.cac_number,
-                business_name=data.business_name,
+
+            cac_result, cac_ref = await self.verify_cac(
+                data.cac_number,
+                data.business_name,
             )
-    
-            if not cac_verified:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="CAC verification failed.",
-                )
 
-            cac_status = VendorVerificationStatus.VERIFIED
-    
-        # --------------------------------------------------------
-        # CREATE VENDOR
-        # --------------------------------------------------------
+            cac_status = VendorVerificationStatus(cac_result)
 
-        data_dict = data.model_dump()
+        vendor_data = data.model_dump()
+
         vendor = Vendor(
-            **data_dict,
+            **vendor_data,
             user_id=user_id,
             nin_verification_status=nin_status,
-            nin_verification_ref=f"stub:{data.nin}",
+            nin_verification_ref=nin_ref,
             cac_verification_status=cac_status,
-            cac_verification_ref=f"stub:{data.cac_number}" if data.cac_number else None,
+            cac_verification_ref=cac_ref,
         )
+
         session.add(vendor)
-    
+
         await session.commit()
         await session.refresh(vendor)
-    
+
         return vendor
-    
 
-    async def _provider_verify(self, endpoint: str, payload: dict) -> tuple[bool, str | None]:
-        from app.utils.config import settings
-        import httpx
-        if not endpoint:
-            if settings.KYC_STRICT:
-                return False, None
-            return True, "development-bypass"
-        headers = {"Authorization": f"Bearer {settings.KYC_PROVIDER_API_KEY}"} if settings.KYC_PROVIDER_API_KEY else {}
-        async with httpx.AsyncClient(timeout=30) as client:
-            response = await client.post(endpoint, json=payload, headers=headers)
-            response.raise_for_status()
-            body = response.json()
-        verified = bool(body.get("verified") or body.get("status") in ("verified", "success") or body.get("data", {}).get("verified"))
-        ref = body.get("reference") or body.get("id") or body.get("data", {}).get("reference") or body.get("data", {}).get("id")
-        return verified, ref
+    # ============================================================
+    # DISPATCHER
+    # ============================================================
 
-    async def verify_nin(self, nin: str, first_name: str, surname: str) -> bool:
-        from app.utils.config import settings
-        if not nin:
-            return False
-        endpoint = f"{settings.KYC_PROVIDER_BASE_URL.rstrip('/')}/nin" if settings.KYC_PROVIDER_BASE_URL else ""
-        ok, _ = await self._provider_verify(endpoint, {"nin": nin, "first_name": first_name, "surname": surname})
-        return ok
+    async def create_dispatcher(
+        self,
+        data: DispatcherCreate,
+        user_id,
+        session: AsyncSession,
+    ):
 
-    async def verify_cac(self, cac_number: str, business_name: str) -> bool:
-        from app.utils.config import settings
-        if not cac_number:
-            return False
-        endpoint = f"{settings.KYC_PROVIDER_BASE_URL.rstrip('/')}/cac" if settings.KYC_PROVIDER_BASE_URL else ""
-        ok, _ = await self._provider_verify(endpoint, {"cac_number": cac_number, "business_name": business_name})
-        return ok
-
-    async def verify_drivers_licence(self, licence_number: str, first_name: str, surname: str) -> bool:
-        from app.utils.config import settings
-        if not licence_number:
-            return False
-        endpoint = f"{settings.KYC_PROVIDER_BASE_URL.rstrip('/')}/drivers-license" if settings.KYC_PROVIDER_BASE_URL else ""
-        ok, _ = await self._provider_verify(endpoint, {"licence_number": licence_number, "first_name": first_name, "surname": surname})
-        return ok
-
-    async def create_dispatcher(self, data: DispatcherCreate, user_id, session: AsyncSession):
-        # ========================================================
-        # ONE PROFILE PER ACCOUNT
-        # ========================================================
-
-        existing_for_user = await session.execute(
-            select(Dispatcher).where(Dispatcher.user_id == user_id)
+        existing = await session.execute(
+            select(Dispatcher).where(
+                Dispatcher.user_id == user_id
+            )
         )
-        if existing_for_user.scalar_one_or_none():
+
+        if existing.scalar_one_or_none():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This account has already been verified as a dispatcher.",
             )
 
-        # ========================================================
-        # BASIC DUPLICATE CHECKS
-        # ========================================================
-    
-        # Email
-        result = await self.vendor_withemail_exists(email=data.email, vendor=False, session=session)
-        if result:
+        if await self.vendor_withemail_exists(data.email, False, session):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A dispatcher with this email already exists.",
             )
-    
-        # Phone
-        result = await self.vendor_withphone_exists(phone=data.phone, vendor=False, session=session)
-        if result:
+
+        if await self.vendor_withphone_exists(data.phone, False, session):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="A dispatcher with this phone number already exists.",
             )
-    
-        # NIN
-        result = await self.vendor_withnin_exists(nin=data.nin, vendor=False, session=session)
-    
-        if result:
+
+        if await self.vendor_withnin_exists(data.nin, False, session):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This NIN is already registered.",
             )
-    
-        # ========================================================
-        # VERIFY NIN
-        # ========================================================
-    
-        nin_verified = await self.verify_nin(
-            nin=data.nin,
-            first_name=data.first_name,
-            surname=data.surname,
+
+        # ---------------- NIN ----------------
+
+        nin_result, nin_ref = await self.verify_nin(
+            data.nin,
+            data.first_name,
+            data.surname,
         )
-    
-        if not nin_verified:
-            raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="NIN verification failed.",
-            )
-    
-        # ========================================================
-        # VEHICLE REGISTRATION
-        # ========================================================
-        # No automated provider covers plate/vehicle ownership lookups in
-        # Nigeria today, so this always goes to manual admin review rather
-        # than gating signup. The dispatcher can verify NIN instantly and
-        # start browsing, but can't accept jobs until vehicle docs clear
-        # review (enforced in the shipment service, not here).
-    
+
+        nin_status = DispatcherVerificationStatus(nin_result)
+
+        # ---------------- VEHICLE ----------------
+
         result = await session.execute(
             select(Dispatcher).where(
                 Dispatcher.vehicle_registration
                 == data.vehicle_registration
             )
         )
-    
+
         if result.scalar_one_or_none():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This vehicle registration is already registered.",
             )
-    
-        # ========================================================
-        # DRIVER-SPECIFIC VERIFICATION
-        # ========================================================
-    
+
+        # Vehicle verification will be connected to the real provider/
+        # review system later. It remains pending until verified.
+        vehicle_status = DispatcherVerificationStatus.PENDING
+
+        # ---------------- DRIVER LICENCE ----------------
+
+        licence_status = None
+
         if data.is_driver:
-    
-            # ----------------------------------------------------
-            # Licence number is required
-            # ----------------------------------------------------
-    
+
             if not data.licence_number:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        "Driver's licence number is required "
-                        "when registering as a driver."
-                    ),
+                    detail="Driver's licence number is required when registering as a driver.",
                 )
-    
-            # ----------------------------------------------------
-            # Check duplicate licence
-            # ----------------------------------------------------
-    
+
             result = await session.execute(
                 select(Dispatcher).where(
                     Dispatcher.licence_number
                     == data.licence_number
                 )
             )
-    
+
             if result.scalar_one_or_none():
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="This driver's licence is already registered.",
                 )
-    
-            # ----------------------------------------------------
-            # Verify driver's licence
-            # ----------------------------------------------------
-    
-            licence_verified = await self.verify_drivers_licence(
-                licence_number=data.licence_number,
-                first_name=data.first_name,
-                surname=data.surname,
+
+            licence_result, _ = await self.verify_drivers_licence(
+                data.licence_number,
+                data.first_name,
+                data.surname,
             )
-    
-            if not licence_verified:
-                raise HTTPException(
-                    status_code=status.HTTP_400_BAD_REQUEST,
-                    detail="Driver's licence verification failed.",
-                )
-    
-        # ========================================================
-        # CREATE DISPATCHER
-        # ========================================================
-        data_dict = data.model_dump()
+
+            licence_status = licence_result
+
+        dispatcher_data = data.model_dump()
+
         dispatcher = Dispatcher(
-            **data_dict,
+            **dispatcher_data,
             user_id=user_id,
-            nin_verification_status=DispatcherVerificationStatus.VERIFIED,
-            nin_verification_ref=f"stub:{data.nin}",
-            vehicle_verification_status=DispatcherVerificationStatus.PENDING,
+            nin_verification_status=nin_status,
+            nin_verification_ref=nin_ref,
+            vehicle_verification_status=vehicle_status,
         )
-    
+
         session.add(dispatcher)
-    
+
         await session.commit()
         await session.refresh(dispatcher)
-    
+
         return dispatcher
 
+    # ============================================================
+    # BOTH ROLES
+    # ============================================================
 
+    async def create_both_roles(
+        self,
+        data: BothRolesCreate,
+        user_id,
+        session: AsyncSession,
+    ):
 
-    async def both_withemail_exists(self, email: str, session: AsyncSession):
-        email_result = await session.execute(
+        existing = await session.execute(
             select(BothRoles).where(
-                BothRoles.email == email
+                BothRoles.user_id == user_id
             )
         )
-        existing_email = email_result.scalar_one_or_none()
-        return existing_email
-    
-    
-    async def both_withphone_exists(self, phone: str, session: AsyncSession):
-        phone_result = await session.execute(
-            select(BothRoles).where(
-                BothRoles.phone == phone
-            )
-        )
-        existing_phone = phone_result.scalar_one_or_none()
-        return existing_phone
 
-
-    async def both_withnin_exists(self, nin: str, session: AsyncSession):
-        nin_result = await session.execute(
-            select(BothRoles).where(
-                BothRoles.nin == nin
-            )
-        )
-        existing_nin = nin_result.scalar_one_or_none()
-        return existing_nin
-    
-    
-    async def both_withcac_exists(self, cac: str, session: AsyncSession):
-        cac_result = await session.execute(
-            select(BothRoles).where(
-                BothRoles.cac_number == cac
-            )
-        )
-        existing_cac = cac_result.scalar_one_or_none()
-        return existing_cac
-
-
-    async def create_both_roles(self, data: BothRolesCreate, user_id, session: AsyncSession):
-
-        existing_for_user = await session.execute(
-            select(BothRoles).where(BothRoles.user_id == user_id)
-        )
-        if existing_for_user.scalar_one_or_none():
+        if existing.scalar_one_or_none():
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This account has already been verified.",
             )
 
-        email_in_vendor = await self.vendor_withemail_exists(email=data.email, vendor=True, session=session)
-        email_in_dispatcher = await self.vendor_withemail_exists(email=data.email, vendor=False, session=session)
-        email_in_both = await self.both_withemail_exists(email=data.email, session=session)
+        # ---------------- EMAIL ----------------
 
-        if email_in_vendor or email_in_dispatcher or email_in_both:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Email already exists")
-
-        phone_in_vendor = await self.vendor_withphone_exists(phone=data.phone, vendor=True, session=session)
-        phone_in_dispatcher = await self.vendor_withphone_exists(phone=data.phone, vendor=False, session=session)
-        phone_in_both = await self.both_withphone_exists(phone=data.phone, session=session)
-
-        if phone_in_vendor or phone_in_dispatcher or phone_in_both:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Phone number already exists")
-
-        nin_in_vendor = await self.vendor_withnin_exists(nin=data.nin, vendor=True, session=session)
-        nin_in_dispatcher = await self.vendor_withnin_exists(nin=data.nin, vendor=False, session=session)
-        nin_in_both = await self.both_withnin_exists(nin=data.nin, session=session)
-
-        if nin_in_vendor or nin_in_dispatcher or nin_in_both:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="NIN already exists")
-
-        cac_in_vendor = await self.vendor_withcac_exists(cac=data.cac_number, vendor=True, session=session)
-        cac_in_dispatcher = await self.vendor_withcac_exists(cac=data.cac_number, vendor=False, session=session)
-        cac_in_both = await self.both_withcac_exists(cac=data.cac_number, session=session)
-
-        if cac_in_vendor or cac_in_dispatcher or cac_in_both:
-            raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="CAC number already exists")
-
-        nin_verified = await self.verify_nin(
-            nin=data.nin,
-            first_name=data.first_name,
-            surname=data.surname,
-        )
-        if not nin_verified:
+        if (
+            await self.vendor_withemail_exists(data.email, True, session)
+            or await self.vendor_withemail_exists(data.email, False, session)
+            or await self.both_withemail_exists(data.email, session)
+        ):
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="NIN verification failed.",
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Email already exists",
             )
 
-        cac_verified = await self.verify_cac(
-            cac_number=data.cac_number,
-            business_name=data.business_name,
-        )
-        if not cac_verified:
+        # ---------------- PHONE ----------------
+
+        if (
+            await self.vendor_withphone_exists(data.phone, True, session)
+            or await self.vendor_withphone_exists(data.phone, False, session)
+            or await self.both_withphone_exists(data.phone, session)
+        ):
             raise HTTPException(
-                status_code=status.HTTP_400_BAD_REQUEST,
-                detail="CAC verification failed.",
+                status_code=status.HTTP_409_CONFLICT,
+                detail="Phone number already exists",
             )
 
+        # ---------------- NIN ----------------
 
-        # ========================================================
-        # VEHICLE REGISTRATION — manual review, not a signup gate
-        # (see note in create_dispatcher)
-        # ========================================================
-    
+        if (
+            await self.vendor_withnin_exists(data.nin, True, session)
+            or await self.vendor_withnin_exists(data.nin, False, session)
+            or await self.both_withnin_exists(data.nin, session)
+        ):
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail="NIN already exists",
+            )
+
+        # ---------------- NIN VERIFICATION ----------------
+
+        nin_result, nin_ref = await self.verify_nin(
+            data.nin,
+            data.first_name,
+            data.surname,
+        )
+
+        nin_status = BothRolesVerificationStatus(nin_result)
+
+        # ---------------- OPTIONAL CAC ----------------
+
+        cac_status = BothRolesVerificationStatus.PENDING
+        cac_ref = None
+
+        if data.cac_number:
+
+            if (
+                await self.vendor_withcac_exists(
+                    data.cac_number,
+                    True,
+                    session,
+                )
+                or await self.vendor_withcac_exists(
+                    data.cac_number,
+                    False,
+                    session,
+                )
+                or await self.both_withcac_exists(
+                    data.cac_number,
+                    session,
+                )
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_409_CONFLICT,
+                    detail="CAC number already exists",
+                )
+
+            cac_result, cac_ref = await self.verify_cac(
+                data.cac_number,
+                data.business_name,
+            )
+
+            cac_status = BothRolesVerificationStatus(cac_result)
+
+        # ---------------- VEHICLE ----------------
+
         result = await session.execute(
             select(Dispatcher).where(
                 Dispatcher.vehicle_registration
@@ -474,43 +537,34 @@ class RoleService:
             )
         )
 
-        result_ = await session.execute(
+        result_both = await session.execute(
             select(BothRoles).where(
                 BothRoles.vehicle_registration
                 == data.vehicle_registration
             )
         )
-        
-    
-        if result.scalar_one_or_none() or result_.scalar_one_or_none():
+
+        if (
+            result.scalar_one_or_none()
+            or result_both.scalar_one_or_none()
+        ):
             raise HTTPException(
                 status_code=status.HTTP_409_CONFLICT,
                 detail="This vehicle registration is already registered.",
             )
-    
-        # ========================================================
-        # DRIVER-SPECIFIC VERIFICATION
-        # ========================================================
-    
+
+        vehicle_status = BothRolesVerificationStatus.PENDING
+
+        # ---------------- DRIVER LICENCE ----------------
+
         if data.is_driver:
-    
-            # ----------------------------------------------------
-            # Licence number is required
-            # ----------------------------------------------------
-    
+
             if not data.licence_number:
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
-                    detail=(
-                        "Driver's licence number is required "
-                        "when registering as a driver."
-                    ),
+                    detail="Driver's licence number is required when registering as a driver.",
                 )
-    
-            # ----------------------------------------------------
-            # Check duplicate licence
-            # ----------------------------------------------------
-    
+
             result = await session.execute(
                 select(Dispatcher).where(
                     Dispatcher.licence_number
@@ -518,56 +572,51 @@ class RoleService:
                 )
             )
 
-            result_ = await session.execute(
+            result_both = await session.execute(
                 select(BothRoles).where(
                     BothRoles.licence_number
                     == data.licence_number
                 )
             )
-    
-            if result.scalar_one_or_none() or result_.scalar_one_or_none():
+
+            if (
+                result.scalar_one_or_none()
+                or result_both.scalar_one_or_none()
+            ):
                 raise HTTPException(
                     status_code=status.HTTP_409_CONFLICT,
                     detail="This driver's licence is already registered.",
                 )
-    
-            # ----------------------------------------------------
-            # Verify driver's licence
-            # ----------------------------------------------------
-    
-            licence_verified = await self.verify_drivers_licence(
-                licence_number=data.licence_number,
-                first_name=data.first_name,
-                surname=data.surname,
+
+            licence_result, _ = await self.verify_drivers_licence(
+                data.licence_number,
+                data.first_name,
+                data.surname,
             )
-    
-            if not licence_verified:
+
+            if licence_result == "rejected":
                 raise HTTPException(
                     status_code=status.HTTP_400_BAD_REQUEST,
                     detail="Driver's licence verification failed.",
                 )
 
-        # ========================================================
-        # CREATE BOTH ROLES PROFILE
-        # ========================================================
-        data_dict = data.model_dump()
+        # ---------------- CREATE PROFILE ----------------
+
+        both_data = data.model_dump()
+
         bothroles = BothRoles(
-            **data_dict,
+            **both_data,
             user_id=user_id,
-            nin_verification_status=BothRolesVerificationStatus.VERIFIED,
-            nin_verification_ref=f"stub:{data.nin}",
-            cac_verification_status=BothRolesVerificationStatus.VERIFIED,
-            cac_verification_ref=f"stub:{data.cac_number}",
-            vehicle_verification_status=BothRolesVerificationStatus.PENDING,
+            nin_verification_status=nin_status,
+            nin_verification_ref=nin_ref,
+            cac_verification_status=cac_status,
+            cac_verification_ref=cac_ref,
+            vehicle_verification_status=vehicle_status,
         )
-    
+
         session.add(bothroles)
-    
+
         await session.commit()
         await session.refresh(bothroles)
-    
-        return bothroles 
-    
 
-
-
+        return bothroles

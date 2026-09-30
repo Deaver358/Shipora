@@ -5092,7 +5092,7 @@ button {
 
 
 .landing-introduction-content > p {
-  max-width: 390px;
+  max-width: 410px;
 
   color: #929daa;
 
@@ -5997,7 +5997,9 @@ button {
 .auth-status-modal {
   position: relative;
 
-  width: min(100%, 470px);
+  width: min(100%, 500px);
+  max-height: min(760px, calc(100vh - 48px));
+  overflow-y: auto;
 
   padding: 42px 38px 36px;
 
@@ -6119,7 +6121,7 @@ button {
 /* Main message */
 
 .auth-status-modal > p {
-  max-width: 390px;
+  max-width: 410px;
 
   margin: 15px auto 0;
 
@@ -7198,7 +7200,7 @@ button {
 }
 
 .shipment-empty-state p {
-  max-width: 390px;
+  max-width: 410px;
 
   margin-bottom: 22px;
 
@@ -9605,7 +9607,7 @@ padding: 16px;
 }
 
 .shipment-empty-state p {
-  max-width: 390px;
+  max-width: 410px;
   margin: 0 0 18px;
   color: var(--muted);
   font-size: 12px;
@@ -25106,5 +25108,986 @@ padding: 16px;
   .shipment-card {
     padding: 18px;
     border-radius: 15px;
+  }
+}
+/* =========================================================
+   SHIPORA ADMIN KYC ADDITIONAL STYLES
+   ========================================================= */
+
+.reject-section {
+  margin-top: 18px;
+}
+
+.reject-section label {
+  display: block;
+  margin-bottom: 8px;
+  color: #344054;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.reject-section textarea {
+  width: 100%;
+  min-height: 100px;
+  padding: 12px 14px;
+  border: 1px solid #d0d5dd;
+  border-radius: 10px;
+  background: #fff;
+  color: #111827;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  resize: vertical;
+  outline: none;
+  box-sizing: border-box;
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.reject-section textarea:focus {
+  border-color: #111827;
+  box-shadow: 0 0 0 3px rgba(17, 24, 39, 0.08);
+}
+
+.error-message {
+  margin: 0 0 18px;
+  padding: 12px 15px;
+  border: 1px solid rgba(201, 54, 54, 0.18);
+  border-radius: 10px;
+  background: rgba(201, 54, 54, 0.07);
+  color: #b42318;
+  font-size: 13px;
+  line-height: 1.5;
+}
+
+
+
+
+/* =========================================================
+   SHIPORA � PREMIUM AUTH EXPERIENCE
+   Login / Signup / Auth Status
+   ========================================================= */
+
+.auth-page {
+  position: relative;
+  min-height: 100vh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 42px 20px 90px;
+  overflow: hidden;
+  isolation: isolate;
+  background:
+    radial-gradient(circle at 15% 15%, rgba(37, 99, 235, 0.13), transparent 30%),
+    radial-gradient(circle at 85% 75%, rgba(249, 115, 22, 0.10), transparent 30%),
+    #f6f8fc;
+}
+
+.auth-background {
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  pointer-events: none;
+  overflow: hidden;
+  background:
+    linear-gradient(
+      135deg,
+      rgba(255, 255, 255, 0.92),
+      rgba(246, 248, 252, 0.96)
+    );
+}
+
+.auth-background::before,
+.auth-background::after {
+  content: "";
+  position: absolute;
+  border-radius: 999px;
+  filter: blur(2px);
+  pointer-events: none;
+}
+
+.auth-background::before {
+  width: 520px;
+  height: 520px;
+  top: -250px;
+  left: -180px;
+  background: rgba(37, 99, 235, 0.08);
+}
+
+.auth-background::after {
+  width: 480px;
+  height: 480px;
+  right: -190px;
+  bottom: -220px;
+  background: rgba(249, 115, 22, 0.07);
+}
+
+/* Subtle grid */
+
+.auth-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.38;
+  background-image:
+    linear-gradient(rgba(15, 23, 42, 0.025) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(15, 23, 42, 0.025) 1px, transparent 1px);
+  background-size: 42px 42px;
+}
+
+/* =========================================================
+   AUTH CARD
+   ========================================================= */
+
+.auth-card {
+  position: relative;
+  width: min(100%, 470px);
+  padding: 38px 40px 34px;
+
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 28px;
+
+  background: rgba(255, 255, 255, 0.88);
+
+  box-shadow:
+    0 40px 100px rgba(15, 23, 42, 0.10),
+    0 12px 35px rgba(15, 23, 42, 0.06);
+
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+
+  animation: shiporaAuthCardIn 0.65s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+.auth-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(
+    90deg,
+    #2563eb,
+    #0ea5e9,
+    #f97316
+  );
+  opacity: 0.9;
+}
+
+/* =========================================================
+   BRAND
+   ========================================================= */
+
+.auth-brand {
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 36px;
+  text-decoration: none;
+}
+
+.auth-brand img {
+  width: 48px;
+  height: 48px;
+  object-fit: cover;
+  border-radius: 13px;
+
+  box-shadow:
+    0 8px 20px rgba(15, 23, 42, 0.12);
+
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease;
+}
+
+.auth-brand:hover img {
+  transform: translateY(-2px) rotate(-2deg);
+  box-shadow:
+    0 12px 26px rgba(15, 23, 42, 0.16);
+}
+
+.auth-brand div {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.auth-brand strong {
+  color: #0f172a;
+  font-size: 17px;
+  font-weight: 900;
+  letter-spacing: 0.12em;
+  line-height: 1;
+}
+
+.auth-brand span {
+  color: #64748b;
+  font-size: 8px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+/* =========================================================
+   HEADING
+   ========================================================= */
+
+.auth-heading {
+  margin-bottom: 28px;
+}
+
+.auth-heading > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+
+  color: #2563eb;
+
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.18em;
+}
+
+.auth-heading > span::before {
+  content: "";
+  width: 20px;
+  height: 2px;
+  border-radius: 999px;
+  background: #f97316;
+}
+
+.auth-heading h1 {
+  margin: 10px 0 10px;
+
+  color: #0f172a;
+
+  font-size: clamp(28px, 5vw, 36px);
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+  font-weight: 850;
+}
+
+.auth-heading p {
+  margin: 0;
+  max-width: 390px;
+
+  color: #64748b;
+
+  font-size: 13px;
+  line-height: 1.7;
+}
+
+/* =========================================================
+   FORM
+   ========================================================= */
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 19px;
+}
+
+.auth-form-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.auth-form-field label,
+.auth-label-row label {
+  color: #344054;
+
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.auth-label-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.auth-form-field input {
+  width: 100%;
+  min-height: 52px;
+
+  box-sizing: border-box;
+
+  padding: 0 15px;
+
+  border: 1px solid #d9dee8;
+  border-radius: 12px;
+
+  outline: none;
+
+  background: #ffffff;
+  color: #0f172a;
+
+  font-family: inherit;
+  font-size: 14px;
+
+  box-shadow:
+    0 2px 5px rgba(15, 23, 42, 0.025);
+
+  transition:
+    border-color 0.2s ease,
+    box-shadow 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease;
+}
+
+.auth-form-field input::placeholder {
+  color: #98a2b3;
+}
+
+.auth-form-field input:hover {
+  border-color: #b8c1d1;
+}
+
+.auth-form-field input:focus {
+  border-color: #2563eb;
+  background: #ffffff;
+
+  box-shadow:
+    0 0 0 4px rgba(37, 99, 235, 0.09),
+    0 8px 20px rgba(37, 99, 235, 0.06);
+
+  transform: translateY(-1px);
+}
+
+.auth-forgot-button {
+  color: #2563eb;
+
+  font-size: 11px;
+  font-weight: 700;
+
+  text-decoration: none;
+
+  transition:
+    color 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.auth-forgot-button:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+/* =========================================================
+   PRIMARY BUTTON
+   ========================================================= */
+
+.auth-primary-button {
+  position: relative;
+
+  width: 100%;
+  min-height: 52px;
+
+  margin-top: 3px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+
+  overflow: hidden;
+
+  border: 0;
+  border-radius: 12px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #111827 0%,
+      #1e293b 55%,
+      #111827 100%
+    );
+
+  color: #ffffff;
+
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+
+  cursor: pointer;
+
+  box-shadow:
+    0 12px 25px rgba(15, 23, 42, 0.16);
+
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+}
+
+.auth-primary-button::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  transform: translateX(-110%);
+
+  background: linear-gradient(
+    110deg,
+    transparent,
+    rgba(255, 255, 255, 0.16),
+    transparent
+  );
+
+  transition: transform 0.55s ease;
+}
+
+.auth-primary-button:hover::before {
+  transform: translateX(110%);
+}
+
+.auth-primary-button:hover {
+  transform: translateY(-2px);
+
+  box-shadow:
+    0 16px 32px rgba(15, 23, 42, 0.21);
+
+  filter: brightness(1.04);
+}
+
+.auth-primary-button:active {
+  transform: translateY(0);
+}
+
+.auth-primary-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.65;
+  transform: none;
+  box-shadow: none;
+}
+
+.auth-primary-button span {
+  position: relative;
+  font-size: 18px;
+}
+
+/* =========================================================
+   DIVIDER
+   ========================================================= */
+
+.auth-divider {
+  position: relative;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  margin: 25px 0 18px;
+}
+
+.auth-divider::before,
+.auth-divider::after {
+  content: "";
+  height: 1px;
+  flex: 1;
+  background: #e7eaf0;
+}
+
+.auth-divider span {
+  padding: 0 13px;
+
+  color: #98a2b3;
+
+  font-size: 9px;
+  font-weight: 800;
+  letter-spacing: 0.15em;
+}
+
+/* =========================================================
+   GOOGLE BUTTON
+   ========================================================= */
+
+.google-auth-button {
+  width: 100%;
+  min-height: 50px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+
+  border: 1px solid #d9dee8;
+  border-radius: 12px;
+
+  background: #ffffff;
+  color: #1f2937;
+
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 750;
+
+  cursor: pointer;
+
+  transition:
+    border-color 0.2s ease,
+    background 0.2s ease,
+    transform 0.2s ease,
+    box-shadow 0.2s ease;
+}
+
+.google-auth-button:hover {
+  border-color: #c5ccd8;
+  background: #fafbfc;
+
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 8px 20px rgba(15, 23, 42, 0.07);
+}
+
+.google-auth-button:active {
+  transform: translateY(0);
+}
+
+.google-auth-button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.google-icon {
+  width: 19px;
+  height: 19px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.google-icon svg {
+  width: 19px;
+  height: 19px;
+  display: block;
+}
+
+/* =========================================================
+   ACCOUNT SWITCH
+   ========================================================= */
+
+.auth-switch {
+  margin: 24px 0 0;
+
+  color: #667085;
+
+  text-align: center;
+
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.auth-switch a {
+  color: #2563eb;
+  font-weight: 800;
+  text-decoration: none;
+}
+
+.auth-switch a:hover {
+  color: #1d4ed8;
+  text-decoration: underline;
+}
+
+/* =========================================================
+   LEGAL
+   ========================================================= */
+
+.auth-legal {
+  margin: 20px auto 0;
+  max-width: 390px;
+
+  color: #98a2b3;
+
+  text-align: center;
+
+  font-size: 10px;
+  line-height: 1.7;
+}
+
+.auth-legal a {
+  color: #667085;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.auth-legal a:hover {
+  color: #2563eb;
+  text-decoration: underline;
+}
+
+/* =========================================================
+   FOOTER
+   ========================================================= */
+
+.auth-footer {
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  bottom: 24px;
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+
+  color: #98a2b3;
+}
+
+.auth-footer span {
+  color: #475467;
+
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.14em;
+}
+
+.auth-footer p {
+  margin: 0;
+
+  font-size: 10px;
+  letter-spacing: 0.03em;
+}
+
+/* =========================================================
+   AUTH CARD MOBILE
+   ========================================================= */
+
+@media (max-width: 600px) {
+  .auth-page {
+    justify-content: flex-start;
+    padding: 24px 14px 82px;
+  }
+
+  .auth-card {
+    width: 100%;
+    padding: 30px 22px 27px;
+    border-radius: 22px;
+  }
+
+  .auth-brand {
+    margin-bottom: 30px;
+  }
+
+  .auth-brand img {
+    width: 43px;
+    height: 43px;
+  }
+
+  .auth-heading {
+    margin-bottom: 24px;
+  }
+
+  .auth-heading h1 {
+    font-size: 29px;
+  }
+
+  .auth-heading p {
+    font-size: 12px;
+  }
+
+  .auth-form-field input {
+    min-height: 50px;
+  }
+
+  .auth-footer {
+    bottom: 17px;
+    flex-direction: column;
+    gap: 3px;
+  }
+}
+
+@media (max-height: 720px) and (min-width: 601px) {
+  .auth-page {
+    padding-top: 25px;
+    padding-bottom: 70px;
+  }
+
+  .auth-card {
+    padding-top: 30px;
+    padding-bottom: 26px;
+  }
+
+  .auth-brand {
+    margin-bottom: 25px;
+  }
+
+  .auth-heading {
+    margin-bottom: 20px;
+  }
+}
+
+/* =========================================================
+   AUTH ACCESSIBILITY
+   ========================================================= */
+
+.auth-primary-button:focus-visible,
+.google-auth-button:focus-visible,
+.auth-forgot-button:focus-visible,
+.auth-switch a:focus-visible,
+.auth-legal a:focus-visible,
+.auth-brand:focus-visible {
+  outline: 3px solid rgba(37, 99, 235, 0.28);
+  outline-offset: 3px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .auth-card,
+  .auth-primary-button,
+  .auth-primary-button::before,
+  .auth-brand img,
+  .auth-form-field input,
+  .google-auth-button {
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+@keyframes shiporaAuthCardIn {
+  from {
+    opacity: 0;
+    transform: translateY(24px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+/* =========================================================
+   SHIPORA FIRST-LOGIN VERIFICATION PROMPT
+   ========================================================= */
+
+.verification-prompt-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: rgba(5, 12, 24, 0.68);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: verificationPromptFadeIn 0.22s ease-out;
+}
+
+.verification-prompt-modal {
+  position: relative;
+  width: min(100%, 480px);
+  padding: 42px 40px 34px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 24px;
+  background:
+    linear-gradient(
+      145deg,
+      rgba(255, 255, 255, 0.98),
+      rgba(247, 250, 255, 0.98)
+    );
+  box-shadow:
+    0 30px 80px rgba(0, 0, 0, 0.28),
+    0 8px 30px rgba(0, 0, 0, 0.12);
+  text-align: center;
+  animation: verificationPromptSlideUp 0.28s ease-out;
+}
+
+.verification-prompt-close {
+  position: absolute;
+  top: 16px;
+  right: 17px;
+  width: 36px;
+  height: 36px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.06);
+  color: #475569;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    background 0.2s ease,
+    color 0.2s ease,
+    transform 0.2s ease;
+}
+
+.verification-prompt-close:hover {
+  background: rgba(15, 23, 42, 0.11);
+  color: #0f172a;
+  transform: rotate(90deg);
+}
+
+.verification-prompt-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 68px;
+  height: 68px;
+  margin: 0 auto 20px;
+  border-radius: 20px;
+  background: linear-gradient(135deg, #eaf3ff, #f5f9ff);
+  color: #1769aa;
+  box-shadow:
+    inset 0 0 0 1px rgba(23, 105, 170, 0.1),
+    0 10px 25px rgba(23, 105, 170, 0.08);
+}
+
+.verification-prompt-icon svg {
+  width: 34px;
+  height: 34px;
+}
+
+.verification-prompt-label {
+  display: block;
+  margin-bottom: 9px;
+  color: #1769aa;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.16em;
+}
+
+.verification-prompt-modal h2 {
+  margin: 0;
+  color: #0f172a;
+  font-size: clamp(25px, 5vw, 32px);
+  font-weight: 800;
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+}
+
+.verification-prompt-modal p {
+  max-width: 370px;
+  margin: 15px auto 0;
+  color: #64748b;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.verification-prompt-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  margin-top: 27px;
+}
+
+.verification-prompt-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  width: 100%;
+  min-height: 52px;
+  padding: 0 20px;
+  border: 0;
+  border-radius: 13px;
+  background: linear-gradient(135deg, #1769aa, #0d4f86);
+  color: #ffffff;
+  font-size: 14px;
+  font-weight: 750;
+  cursor: pointer;
+  box-shadow: 0 10px 25px rgba(23, 105, 170, 0.2);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    filter 0.2s ease;
+}
+
+.verification-prompt-primary span {
+  font-size: 19px;
+  transition: transform 0.2s ease;
+}
+
+.verification-prompt-primary:hover {
+  filter: brightness(1.06);
+  transform: translateY(-2px);
+  box-shadow: 0 14px 30px rgba(23, 105, 170, 0.27);
+}
+
+.verification-prompt-primary:hover span {
+  transform: translateX(4px);
+}
+
+.verification-prompt-later {
+  min-height: 46px;
+  border: 0;
+  background: transparent;
+  color: #64748b;
+  font-size: 14px;
+  font-weight: 650;
+  cursor: pointer;
+  transition:
+    color 0.2s ease,
+    background 0.2s ease;
+  border-radius: 10px;
+}
+
+.verification-prompt-later:hover {
+  background: rgba(15, 23, 42, 0.045);
+  color: #0f172a;
+}
+
+.verification-prompt-modal small {
+  display: block;
+  margin-top: 19px;
+  color: #94a3b8;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+@keyframes verificationPromptFadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes verificationPromptSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.98);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 520px) {
+  .verification-prompt-overlay {
+    padding: 16px;
+  }
+
+  .verification-prompt-modal {
+    padding: 36px 23px 27px;
+    border-radius: 21px;
+  }
+
+  .verification-prompt-icon {
+    width: 60px;
+    height: 60px;
+    margin-bottom: 17px;
+  }
+
+  .verification-prompt-modal h2 {
+    font-size: 25px;
+  }
+
+  .verification-prompt-modal p {
+    font-size: 14px;
   }
 }

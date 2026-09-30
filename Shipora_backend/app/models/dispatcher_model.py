@@ -10,9 +10,10 @@ from sqlmodel import SQLModel, Field
 
 
 class VerificationStatus(str, Enum):
-    PENDING = "pending"    # nothing checked yet
+    PENDING = "pending"
     VERIFIED = "verified"
     REJECTED = "rejected"
+    REVIEW_REQUIRED = "review_required"
 
 
 class Dispatcher(SQLModel, table=True):
@@ -277,3 +278,6 @@ class Dispatcher(SQLModel, table=True):
             nullable=False,
         ),
     )
+
+
+

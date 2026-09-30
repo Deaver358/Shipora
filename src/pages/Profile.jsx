@@ -6,6 +6,109 @@ import "../styles/change.css";
 const API_URL =
   import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1.0";
 
+function isVerified(value) {
+  if (value === true) return true;
+
+  if (typeof value === "string") {
+    return [
+      "verified",
+      "VERIFIED",
+      "success",
+      "successful",
+      "approved",
+    ].includes(value.trim());
+  }
+
+  return false;
+}
+
+function VerifiedShape({ color }) {
+  return (
+    <svg
+      width="21"
+      height="21"
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      style={{ display: "block", flexShrink: 0 }}
+    >
+      <g fill={color}>
+        <circle cx="12" cy="12" r="8.6" />
+
+        {[0, 45, 90, 135].map((deg) => (
+          <rect
+            key={deg}
+            x="4.2"
+            y="4.2"
+            width="15.6"
+            height="15.6"
+            rx="4.2"
+            transform={`rotate(${deg} 12 12)`}
+          />
+        ))}
+      </g>
+
+      <path
+        d="M7.2 12.4L10.5 15.6L16.9 8.6"
+        fill="none"
+        stroke="#fff"
+        strokeWidth="2.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  );
+}
+
+function VerificationBadge({ type, label }) {
+  const badgeStyles = {
+    identity: {
+      background: "#16a34a",
+      text: "#15803d",
+      pillBackground: "#ecfdf3",
+      pillBorder: "#bbf7d0",
+    },
+
+    business: {
+      background: "#2563eb",
+      text: "#2563eb",
+      pillBackground: "#eff6ff",
+      pillBorder: "#bfdbfe",
+    },
+
+    dispatch: {
+      background: "#7c3aed",
+      text: "#7c3aed",
+      pillBackground: "#f5f3ff",
+      pillBorder: "#ddd6fe",
+    },
+  };
+
+  const style = badgeStyles[type] || badgeStyles.identity;
+
+  return (
+    <span
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "7px",
+        padding: "5px 10px 5px 6px",
+        borderRadius: "999px",
+        background: style.pillBackground,
+        border: `1px solid ${style.pillBorder}`,
+        color: style.text,
+        fontSize: "12px",
+        fontWeight: 700,
+        lineHeight: 1,
+        whiteSpace: "nowrap",
+      }}
+    >
+      <VerifiedShape color={style.background} />
+
+      {label}
+    </span>
+  );
+}
+
 function Profile() {
   const navigate = useNavigate();
 
@@ -106,10 +209,7 @@ function Profile() {
   const getInitial = () => {
     if (!profile?.fullname) return "S";
 
-    return profile.fullname
-      .trim()
-      .charAt(0)
-      .toUpperCase();
+    return profile.fullname.trim().charAt(0).toUpperCase();
   };
 
   const getRole = () => {
@@ -138,6 +238,101 @@ function Profile() {
     );
   };
 
+  const renderVendorBadges = (vendor) => {
+    const ninVerified =
+      isVerified(vendor?.nin_verified) ||
+      isVerified(vendor?.nin_verification_status);
+
+    const cacVerified =
+      isVerified(vendor?.cac_verified) ||
+      isVerified(vendor?.cac_verification_status);
+
+    return (
+      <>
+        {ninVerified && (
+          <VerificationBadge
+            type="identity"
+            label="Identity Verified"
+          />
+        )}
+
+        {cacVerified && (
+          <VerificationBadge
+            type="business"
+            label="Business Verified"
+          />
+        )}
+      </>
+    );
+  };
+
+  const renderDispatcherBadges = (dispatcher) => {
+    const ninVerified =
+      isVerified(dispatcher?.nin_verified) ||
+      isVerified(dispatcher?.nin_verification_status);
+
+    const vehicleVerified =
+      isVerified(dispatcher?.vehicle_verified) ||
+      isVerified(dispatcher?.vehicle_verification_status);
+
+    return (
+      <>
+        {ninVerified && (
+          <VerificationBadge
+            type="identity"
+            label="Identity Verified"
+          />
+        )}
+
+        {vehicleVerified && (
+          <VerificationBadge
+            type="dispatch"
+            label="Dispatch Verified"
+          />
+        )}
+      </>
+    );
+  };
+
+  const renderBothBadges = (both) => {
+    const ninVerified =
+      isVerified(both?.nin_verified) ||
+      isVerified(both?.nin_verification_status);
+
+    const cacVerified =
+      isVerified(both?.cac_verified) ||
+      isVerified(both?.cac_verification_status);
+
+    const vehicleVerified =
+      isVerified(both?.vehicle_verified) ||
+      isVerified(both?.vehicle_verification_status);
+
+    return (
+      <>
+        {ninVerified && (
+          <VerificationBadge
+            type="identity"
+            label="Identity Verified"
+          />
+        )}
+
+        {cacVerified && (
+          <VerificationBadge
+            type="business"
+            label="Business Verified"
+          />
+        )}
+
+        {vehicleVerified && (
+          <VerificationBadge
+            type="dispatch"
+            label="Dispatch Verified"
+          />
+        )}
+      </>
+    );
+  };
+
   if (loading) {
     return (
       <div className="account-page profile-page">
@@ -156,9 +351,7 @@ function Profile() {
             className="app-logo"
           />
 
-          <div className="account-page-label">
-            PROFILE
-          </div>
+          <div className="account-page-label">PROFILE</div>
         </header>
 
         <main className="account-content">
@@ -188,9 +381,7 @@ function Profile() {
             className="app-logo"
           />
 
-          <div className="account-page-label">
-            PROFILE
-          </div>
+          <div className="account-page-label">PROFILE</div>
         </header>
 
         <main className="account-content">
@@ -209,6 +400,7 @@ function Profile() {
 
   const vendor = profile.vendor;
   const dispatcher = profile.dispatcher;
+  const both = profile.both;
 
   return (
     <div className="account-page profile-page">
@@ -227,13 +419,10 @@ function Profile() {
           className="app-logo"
         />
 
-        <div className="account-page-label">
-          PROFILE
-        </div>
+        <div className="account-page-label">PROFILE</div>
       </header>
 
       <main className="account-content">
-
         {error && (
           <div className="profile-message profile-message-error">
             {error}
@@ -282,6 +471,19 @@ function Profile() {
                 Active Account
               </span>
             </div>
+
+            <div
+              style={{
+                display: "flex",
+                flexWrap: "wrap",
+                gap: "8px",
+                marginTop: "12px",
+              }}
+            >
+              {vendor && renderVendorBadges(vendor)}
+              {dispatcher && renderDispatcherBadges(dispatcher)}
+              {both && renderBothBadges(both)}
+            </div>
           </div>
 
           <button
@@ -305,7 +507,6 @@ function Profile() {
           </div>
 
           <div className="profile-details-grid">
-
             <div className="profile-detail-card">
               <span>FULL NAME</span>
 
@@ -343,7 +544,6 @@ function Profile() {
               <span>ACCOUNT ROLE</span>
               <strong>{getRole()}</strong>
             </div>
-
           </div>
 
           <div className="profile-edit-actions">
@@ -398,7 +598,6 @@ function Profile() {
             </div>
 
             <div className="profile-details-grid">
-
               <div className="profile-detail-card">
                 <span>BUSINESS NAME</span>
                 <strong>{vendor.business_name || "—"}</strong>
@@ -412,14 +611,20 @@ function Profile() {
               <div className="profile-detail-card">
                 <span>NIN VERIFICATION</span>
                 <strong>
-                  {vendor.nin_verified ? "Verified" : "Pending"}
+                  {isVerified(vendor.nin_verification_status) ||
+                  isVerified(vendor.nin_verified)
+                    ? "Verified"
+                    : "Pending"}
                 </strong>
               </div>
 
               <div className="profile-detail-card">
                 <span>CAC VERIFICATION</span>
                 <strong>
-                  {vendor.cac_verified ? "Verified" : "Pending"}
+                  {isVerified(vendor.cac_verification_status) ||
+                  isVerified(vendor.cac_verified)
+                    ? "Verified"
+                    : "Pending"}
                 </strong>
               </div>
 
@@ -448,7 +653,6 @@ function Profile() {
                     : "Not connected"}
                 </strong>
               </div>
-
             </div>
           </section>
         )}
@@ -466,7 +670,6 @@ function Profile() {
             </div>
 
             <div className="profile-details-grid">
-
               <div className="profile-detail-card">
                 <span>DISPATCH NAME</span>
                 <strong>{dispatcher.dispatch_name || "—"}</strong>
@@ -480,14 +683,22 @@ function Profile() {
               <div className="profile-detail-card">
                 <span>NIN VERIFICATION</span>
                 <strong>
-                  {dispatcher.nin_verified ? "Verified" : "Pending"}
+                  {isVerified(
+                    dispatcher.nin_verification_status
+                  ) ||
+                  isVerified(dispatcher.nin_verified)
+                    ? "Verified"
+                    : "Pending"}
                 </strong>
               </div>
 
               <div className="profile-detail-card">
                 <span>VEHICLE VERIFICATION</span>
                 <strong>
-                  {dispatcher.vehicle_verified
+                  {isVerified(
+                    dispatcher.vehicle_verification_status
+                  ) ||
+                  isVerified(dispatcher.vehicle_verified)
                     ? "Verified"
                     : "Pending"}
                 </strong>
@@ -500,7 +711,9 @@ function Profile() {
                   {renderStars(dispatcher.average_rating)}
 
                   <strong>
-                    {Number(dispatcher.average_rating || 0).toFixed(1)}
+                    {Number(
+                      dispatcher.average_rating || 0
+                    ).toFixed(1)}
                   </strong>
 
                   <small>
@@ -518,15 +731,75 @@ function Profile() {
                     : "Not connected"}
                 </strong>
               </div>
+            </div>
+          </section>
+        )}
 
+        {both && (
+          <section className="account-section">
+            <div className="account-section-heading">
+              <span>BOTH ROLES PROFILE</span>
+
+              <h2>Vendor & dispatch information</h2>
+
+              <p>
+                Information associated with your combined Shipora account.
+              </p>
+            </div>
+
+            <div className="profile-details-grid">
+              <div className="profile-detail-card">
+                <span>BUSINESS NAME</span>
+                <strong>{both.business_name || "—"}</strong>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>DISPATCH NAME</span>
+                <strong>{both.dispatch_name || "—"}</strong>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>NIN VERIFICATION</span>
+                <strong>
+                  {isVerified(both.nin_verification_status) ||
+                  isVerified(both.nin_verified)
+                    ? "Verified"
+                    : "Pending"}
+                </strong>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>CAC VERIFICATION</span>
+                <strong>
+                  {isVerified(both.cac_verification_status) ||
+                  isVerified(both.cac_verified)
+                    ? "Verified"
+                    : "Pending"}
+                </strong>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>VEHICLE VERIFICATION</span>
+                <strong>
+                  {isVerified(
+                    both.vehicle_verification_status
+                  ) ||
+                  isVerified(both.vehicle_verified)
+                    ? "Verified"
+                    : "Pending"}
+                </strong>
+              </div>
+
+              <div className="profile-detail-card">
+                <span>VEHICLE TYPE</span>
+                <strong>{both.vehicle_type || "—"}</strong>
+              </div>
             </div>
           </section>
         )}
 
         <section className="profile-info-banner">
-          <div className="profile-info-icon">
-            ✓
-          </div>
+          <div className="profile-info-icon">✓</div>
 
           <div>
             <strong>Account information</strong>
@@ -537,7 +810,6 @@ function Profile() {
             </p>
           </div>
         </section>
-
       </main>
     </div>
   );

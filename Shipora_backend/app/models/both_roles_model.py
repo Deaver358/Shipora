@@ -13,6 +13,7 @@ class VerificationStatus(str, Enum):
     PENDING = "pending"
     VERIFIED = "verified"
     REJECTED = "rejected"
+    REVIEW_REQUIRED = "review_required"
 
 
 class BothRoles(SQLModel, table=True):
@@ -147,7 +148,7 @@ class BothRoles(SQLModel, table=True):
         )
     )
 
-    cac_number: str = Field(
+    cac_number: Optional[str] = Field(
         sa_column=Column(
             pg.VARCHAR,
             nullable=False,
@@ -429,3 +430,5 @@ class BothRoles(SQLModel, table=True):
             nullable=False,
         ),
     )
+
+
