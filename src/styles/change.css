@@ -5273,3 +5273,710 @@
     white-space: normal;
   }
 }
+
+/* =========================================================
+   SHIPORA WORKSPACE VERIFICATION GATE
+   ========================================================= */
+
+.workspace-gate-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background:
+    radial-gradient(
+      circle at 50% 0%,
+      rgba(96, 165, 250, 0.12),
+      transparent 45%
+    ),
+    rgba(7, 12, 24, 0.58);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  animation: workspaceGateFade 0.2s ease-out;
+}
+
+.workspace-gate-card {
+  width: min(100%, 480px);
+  padding: 32px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 24px;
+  background: #ffffff;
+  box-shadow:
+    0 30px 80px rgba(15, 23, 42, 0.2),
+    0 8px 25px rgba(15, 23, 42, 0.08);
+  animation: workspaceGateUp 0.25s ease-out;
+}
+
+.workspace-gate-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.workspace-verification-icon {
+  width: 54px;
+  height: 54px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 16px;
+  color: #2563eb;
+  background: linear-gradient(
+    145deg,
+    #eff6ff,
+    #dbeafe
+  );
+  border: 1px solid #bfdbfe;
+}
+
+.workspace-verification-icon svg {
+  width: 29px;
+  height: 29px;
+}
+
+.workspace-gate-label {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.13em;
+  color: #2563eb;
+}
+
+.workspace-gate-card h1 {
+  margin: 0;
+  color: #0f172a;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 800;
+  letter-spacing: -0.025em;
+}
+
+.workspace-gate-description {
+  margin: 12px 0 0;
+  color: #64748b;
+  font-size: 14px;
+  line-height: 1.7;
+}
+
+.workspace-gate-info {
+  display: flex;
+  gap: 12px;
+  margin-top: 22px;
+  padding: 16px;
+  border: 1px solid #e2e8f0;
+  border-radius: 16px;
+  background: #f8fafc;
+}
+
+.workspace-gate-info-icon {
+  width: 28px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  border-radius: 50%;
+  background: #dbeafe;
+  color: #2563eb;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.workspace-gate-info strong {
+  display: block;
+  color: #1e293b;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.workspace-gate-info p {
+  margin: 5px 0 0;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.6;
+}
+
+.workspace-gate-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin-top: 22px;
+}
+
+.workspace-gate-primary,
+.workspace-gate-secondary {
+  min-height: 48px;
+  border-radius: 13px;
+  padding: 12px 16px;
+  font-family: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease,
+    border-color 0.18s ease;
+}
+
+.workspace-gate-primary {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid #2563eb;
+  color: #ffffff;
+  background: #2563eb;
+  box-shadow: 0 7px 18px rgba(37, 99, 235, 0.2);
+}
+
+.workspace-gate-primary:hover {
+  background: #1d4ed8;
+  box-shadow: 0 10px 24px rgba(37, 99, 235, 0.28);
+  transform: translateY(-1px);
+}
+
+.workspace-gate-primary:active,
+.workspace-gate-secondary:active {
+  transform: scale(0.98);
+}
+
+.workspace-gate-primary span {
+  font-size: 17px;
+  line-height: 1;
+}
+
+.workspace-gate-secondary {
+  border: 1px solid #dbe2ea;
+  color: #475569;
+  background: #ffffff;
+}
+
+.workspace-gate-secondary:hover {
+  border-color: #cbd5e1;
+  background: #f8fafc;
+}
+
+.workspace-gate-back {
+  display: block;
+  margin: 18px auto 0;
+  padding: 4px 8px;
+  border: 0;
+  background: transparent;
+  color: #94a3b8;
+  font-family: inherit;
+  font-size: 12px;
+  font-weight: 700;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.workspace-gate-back:hover {
+  color: #475569;
+}
+
+
+/* =========================================================
+   SHIPORA WORKSPACE LOADING
+   ========================================================= */
+
+.workspace-loading-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 9998;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  background: #f8fafc;
+}
+
+.workspace-loading-card {
+  display: flex;
+  align-items: center;
+  gap: 15px;
+  min-width: 250px;
+  padding: 18px 20px;
+  border: 1px solid #e2e8f0;
+  border-radius: 17px;
+  background: #ffffff;
+  box-shadow: 0 12px 35px rgba(15, 23, 42, 0.08);
+}
+
+.workspace-loading-spinner {
+  width: 30px;
+  height: 30px;
+  flex-shrink: 0;
+  border: 3px solid #dbeafe;
+  border-top-color: #2563eb;
+  border-radius: 50%;
+  animation: workspaceSpinner 0.7s linear infinite;
+}
+
+.workspace-loading-content {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.workspace-loading-label {
+  color: #2563eb;
+  font-size: 9px;
+  font-weight: 900;
+  letter-spacing: 0.15em;
+}
+
+.workspace-loading-content strong {
+  color: #0f172a;
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.workspace-loading-content p {
+  margin: 0;
+  color: #94a3b8;
+  font-size: 11px;
+}
+
+
+/* =========================================================
+   ANIMATIONS
+   ========================================================= */
+
+@keyframes workspaceGateFade {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes workspaceGateUp {
+  from {
+    opacity: 0;
+    transform: translateY(10px) scale(0.985);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes workspaceSpinner {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+/* =========================================================
+   MOBILE
+   ========================================================= */
+
+@media (max-width: 560px) {
+  .workspace-gate-overlay {
+    padding: 16px;
+  }
+
+  .workspace-gate-card {
+    padding: 24px 20px;
+    border-radius: 21px;
+  }
+
+  .workspace-gate-card h1 {
+    font-size: 24px;
+  }
+
+  .workspace-gate-actions {
+    grid-template-columns: 1fr;
+  }
+
+  .workspace-gate-primary,
+  .workspace-gate-secondary {
+    min-height: 50px;
+  }
+
+  .workspace-loading-card {
+    min-width: 0;
+    width: 100%;
+    max-width: 330px;
+  }
+}
+
+/* =========================================================
+   PROFILE AVATAR UPLOAD
+   Additional styles only — existing profile styles untouched
+   ========================================================= */
+
+.profile-avatar-wrapper {
+  position: relative;
+  cursor: pointer;
+  overflow: hidden;
+}
+
+.profile-avatar-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  background: rgba(0, 0, 0, 0.48);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  opacity: 0;
+  transition: opacity 0.2s ease;
+  pointer-events: none;
+}
+
+.profile-avatar-wrapper:hover .profile-avatar-overlay,
+.profile-avatar-wrapper:focus .profile-avatar-overlay {
+  opacity: 1;
+}
+
+.profile-avatar-camera {
+  font-size: 18px;
+  line-height: 1;
+}
+
+.profile-avatar-uploading .profile-avatar-overlay {
+  opacity: 1;
+}
+
+.profile-avatar-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(255, 255, 255, 0.4);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: profileAvatarSpin 0.7s linear infinite;
+}
+
+@keyframes profileAvatarSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+/* =========================================================
+   PROFILE LOADING
+   Additional styles only
+   ========================================================= */
+
+.profile-loading {
+  min-height: 320px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 40px 20px;
+}
+
+.profile-loading-card {
+  width: min(100%, 420px);
+  padding: 32px 28px;
+  border-radius: 24px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 18px 50px rgba(0, 0, 0, 0.08);
+  text-align: center;
+}
+
+.profile-loading-icon {
+  width: 54px;
+  height: 54px;
+  margin: 0 auto 18px;
+  border-radius: 50%;
+  border: 3px solid rgba(0, 0, 0, 0.08);
+  border-top-color: currentColor;
+  animation: profileLoadingSpin 0.8s linear infinite;
+}
+
+.profile-loading-card h1 {
+  margin: 0 0 8px;
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.profile-loading-card p {
+  margin: 0;
+  font-size: 14px;
+  opacity: 0.65;
+}
+
+.profile-loading-bar {
+  width: 100%;
+  height: 4px;
+  margin-top: 22px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.07);
+}
+
+.profile-loading-bar::before {
+  content: "";
+  display: block;
+  width: 40%;
+  height: 100%;
+  border-radius: inherit;
+  background: currentColor;
+  animation: profileLoadingBar 1.2s ease-in-out infinite;
+}
+
+@keyframes profileLoadingSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes profileLoadingBar {
+  0% {
+    transform: translateX(-120%);
+  }
+
+  50% {
+    transform: translateX(120%);
+  }
+
+  100% {
+    transform: translateX(260%);
+  }
+}
+
+/* =========================================================
+   PROFILE — AVATAR CONTROLS
+   Additional styles only
+   ========================================================= */
+
+.profile-avatar-wrapper {
+  position: relative;
+}
+
+.profile-avatar-add,
+.profile-avatar-delete {
+  position: absolute;
+  z-index: 5;
+  width: 32px;
+  height: 32px;
+  border: 3px solid #fff;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  font-family: inherit;
+  font-weight: 700;
+  line-height: 1;
+  box-shadow: 0 5px 15px rgba(0, 0, 0, 0.16);
+  transition:
+    transform 0.2s ease,
+    box-shadow 0.2s ease,
+    opacity 0.2s ease;
+}
+
+.profile-avatar-add {
+  right: -3px;
+  bottom: -3px;
+  background: #111;
+  color: #fff;
+  font-size: 22px;
+}
+
+.profile-avatar-delete {
+  top: -3px;
+  right: -3px;
+  background: #fff;
+  color: #111;
+  font-size: 19px;
+}
+
+.profile-avatar-add:hover,
+.profile-avatar-delete:hover {
+  transform: scale(1.08);
+  box-shadow: 0 7px 18px rgba(0, 0, 0, 0.2);
+}
+
+.profile-avatar-add:disabled,
+.profile-avatar-delete:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none;
+}
+
+
+/* =========================================================
+   PROFILE — AVATAR UPLOAD STATE
+   ========================================================= */
+
+.profile-avatar-uploading {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: inherit;
+  background: rgba(0, 0, 0, 0.45);
+  backdrop-filter: blur(2px);
+}
+
+.profile-avatar-spinner {
+  width: 26px;
+  height: 26px;
+  border: 3px solid rgba(255, 255, 255, 0.35);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: profileAvatarSpin 0.7s linear infinite;
+}
+
+@keyframes profileAvatarSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+/* =========================================================
+   PROFILE — PROFESSIONAL LOADING STATE
+   ========================================================= */
+
+.profile-loading {
+  min-height: 420px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+}
+
+.profile-loading-card {
+  width: min(100%, 560px);
+  padding: 34px;
+  border-radius: 28px;
+  background: rgba(255, 255, 255, 0.96);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow:
+    0 24px 70px rgba(0, 0, 0, 0.08),
+    0 4px 16px rgba(0, 0, 0, 0.04);
+}
+
+.profile-loading-avatar,
+.profile-loading-line,
+.profile-loading-block {
+  background: linear-gradient(
+    90deg,
+    rgba(0, 0, 0, 0.055) 25%,
+    rgba(0, 0, 0, 0.095) 50%,
+    rgba(0, 0, 0, 0.055) 75%
+  );
+  background-size: 200% 100%;
+  animation: profileSkeleton 1.5s ease-in-out infinite;
+}
+
+.profile-loading-avatar {
+  width: 92px;
+  height: 92px;
+  margin-bottom: 24px;
+  border-radius: 50%;
+}
+
+.profile-loading-lines {
+  display: flex;
+  flex-direction: column;
+  gap: 11px;
+  margin-bottom: 30px;
+}
+
+.profile-loading-line {
+  width: 65%;
+  height: 13px;
+  border-radius: 999px;
+}
+
+.profile-loading-line-title {
+  width: 42%;
+  height: 20px;
+}
+
+.profile-loading-line.short {
+  width: 28%;
+}
+
+.profile-loading-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin-bottom: 30px;
+}
+
+.profile-loading-block {
+  height: 82px;
+  border-radius: 17px;
+}
+
+.profile-loading-message {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding-top: 4px;
+  font-size: 13px;
+  font-weight: 600;
+  opacity: 0.58;
+}
+
+.profile-loading-spinner {
+  width: 15px;
+  height: 15px;
+  border: 2px solid rgba(0, 0, 0, 0.12);
+  border-top-color: currentColor;
+  border-radius: 50%;
+  animation: profileLoadingSpin 0.7s linear infinite;
+}
+
+@keyframes profileSkeleton {
+  0% {
+    background-position: 200% 0;
+  }
+
+  100% {
+    background-position: -200% 0;
+  }
+}
+
+@keyframes profileLoadingSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+
+/* Mobile */
+@media (max-width: 600px) {
+  .profile-loading-card {
+    padding: 26px 20px;
+    border-radius: 22px;
+  }
+
+  .profile-loading-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .profile-loading-block {
+    height: 60px;
+  }
+
+  .profile-avatar-add,
+  .profile-avatar-delete {
+    width: 29px;
+    height: 29px;
+  }
+}

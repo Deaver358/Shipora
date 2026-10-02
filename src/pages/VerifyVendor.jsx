@@ -137,7 +137,7 @@ function VerifyVendor() {
           <button
             type="button"
             className="verification-back-link"
-            onClick={() => navigate("/verify-role")}
+            onClick={() => navigate(-1)}
           >
             ← Back
           </button>

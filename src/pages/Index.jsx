@@ -332,37 +332,54 @@ function Index() {
 
         <div className="landing-footer-links">
 
-          <Link to="/login">
-            Sign in
-          </Link>
+  <a
+    href="https://x.com/shipora_"
+    target="_blank"
+    rel="noopener noreferrer"
+    aria-label="Shipora on X"
+    className="landing-x-link"
+  >
+    <svg
+      viewBox="0 0 24 24"
+      aria-hidden="true"
+      className="landing-x-icon"
+    >
+      <path
+        d="M18.244 2.25h3.308l-7.227 8.26 8.502 11.24H16.17l-5.214-6.817-5.967 6.817H1.68l7.73-8.835L1.254 2.25H8.08l4.713 6.231 5.45-6.231Zm-1.161 17.52h1.833L7.084 4.126H5.117L17.083 19.77Z"
+      />
+    </svg>
+  </a>
 
-          <Link to="/signup">
-            Create account
-          </Link>
+  <Link to="/terms">
+    Terms
+  </Link>
 
-          <Link to="/terms">
-            Terms
-          </Link>
+  <Link to="/privacy">
+    Privacy
+  </Link>
 
-          <Link to="/privacy">
-            Privacy
-          </Link>
-
-        </div>
+</div>
 
 
         <div className="landing-footer-bottom">
 
-          <span>
-            © 2026 SHIPORA. All rights reserved.
-          </span>
+  <span>
+    © 2026 SHIPORA. All rights reserved.
+  </span>
 
-          <span>
-            Moving what matters.
-          </span>
+  <Link
+    to="/admin-login"
+    className="landing-admin-link"
+    aria-label="Admin login"
+  >
+    Admin
+  </Link>
 
-        </div>
+  <span>
+    Moving what matters.
+  </span>
 
+</div>
       </footer>
 
     </main>

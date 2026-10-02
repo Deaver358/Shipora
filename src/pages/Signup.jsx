@@ -171,7 +171,7 @@ function Signup() {
           provider: "google",
 
           options: {
-            redirectTo: `${window.location.origin}/`,
+            redirectTo: `${window.location.origin}/home`,
 
             queryParams: {
               access_type: "offline",

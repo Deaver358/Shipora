@@ -1,5 +1,6 @@
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from sqlalchemy import text
@@ -118,7 +119,26 @@ async def life_span(app: FastAPI):
     print("Scheduler stopped")
 
 
-app = FastAPI(title="Shipora", version=version, description="Shipora Logistics & Forwarding API", lifespan=life_span)
+app = FastAPI(
+    title="Shipora",
+    version=version,
+    description="Shipora Logistics & Forwarding API",
+    lifespan=life_span,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "http://localhost:5173",
+        "http://127.0.0.1:5173",
+        "http://localhost:5174",
+        "http://127.0.0.1:5174",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 API_PREFIX = f"/api/{version}"
 
 register_sessionMiddleware(app)

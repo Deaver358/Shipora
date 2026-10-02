@@ -137,7 +137,7 @@ function VerifyDispatch() {
           <button
             type="button"
             className="verification-back-link"
-            onClick={() => navigate("/verify-role")}
+            onClick={() => navigate(-1)}
             disabled={submitting}
           >
             ← Back

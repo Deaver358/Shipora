@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.session_config import session
-from app.core.dependencies import get_this_user
+from app.core.dependencies import get_authenticated_user, get_this_user
 from app.models.user_model import User
 from app.schema.profile_schema import (
     ProfileResponse,
@@ -25,7 +25,7 @@ async def list_banks():
 
 
 @router.get("/me", response_model=ProfileResponse)
-async def get_my_profile(user: User = Depends(get_this_user), session: AsyncSession = Depends(session)):
+async def get_my_profile(user: User = Depends(get_authenticated_user), session: AsyncSession = Depends(session)):
     return await profile_service.get_full_profile(user, session)
 
 

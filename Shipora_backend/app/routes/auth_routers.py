@@ -9,6 +9,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.exceptions import HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.templating import Jinja2Templates
 
@@ -20,6 +21,7 @@ from app.core.dependencies import (
 )
 from app.schema.auth_schema import SignUpModel, LoginModel
 from app.schema.user import UserDataModel
+from app.models.user_model import User, UserRole
 from app.services.auth_services import AuthService
 from app.utils.validators import (
     create_url_safe_token,
@@ -36,6 +38,7 @@ from app.utils.path import template_path
 from app.utils.google import oauth
 from app.utils.errors import UserNotFound, InvalidToken
 from app.utils.redis import store_access_token, store_refresh_token
+from app.utils.config import settings
 
 import asyncio
 
@@ -275,6 +278,110 @@ async def log_in(
     return response
 
 
+
+# ============================================================
+# ADMIN LOGIN
+# ============================================================
+
+@router.post("/admin-login")
+async def admin_login(
+    login_data: LoginModel,
+    response: Response,
+    session: AsyncSession = Depends(session),
+):
+    email = str(login_data.email).strip().lower()
+    password = login_data.password
+
+    # Admin credentials stay on the backend in .env.
+    if (
+        email != str(settings.ADMIN_EMAIL).strip().lower()
+        or password != settings.ADMIN_PASSWORD
+    ):
+        raise HTTPException(
+            detail="Invalid admin credentials.",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
+    # The admin must also exist as an admin user in the database because
+    # the existing RoleChecker verifies the authenticated DB user's role.
+    statement = select(User).where(User.email == email)
+    user = (await session.execute(statement)).scalars().one_or_none()
+
+    if user is None:
+        user = User(
+            email=email,
+            phone=None,
+            fullname="Shipora Administrator",
+            password=hash_password(password),
+            role=UserRole.ADMIN,
+            account_verified=True,
+            verified=True,
+            status="active",
+            terms_accepted=True,
+            terms_version="admin",
+        )
+        session.add(user)
+        await session.commit()
+        await session.refresh(user)
+
+    else:
+        if user.role != UserRole.ADMIN:
+            raise HTTPException(
+                detail="This account is not an admin account.",
+                status_code=status.HTTP_403_FORBIDDEN,
+            )
+
+        changed = False
+
+        if not user.verified:
+            user.verified = True
+            changed = True
+
+        if not user.account_verified:
+            user.account_verified = True
+            changed = True
+
+        if not user.password or not verify_hash(password, user.password):
+            user.password = hash_password(password)
+            changed = True
+
+        if changed:
+            await session.commit()
+            await session.refresh(user)
+
+    user_data = {
+        "email": str(user.email),
+        "uid": str(user.uid),
+    }
+
+    access_token, access_payload = create_access_token(
+        user_data=user_data,
+    )
+
+    if not access_token:
+        raise InvalidToken()
+
+    # AccessTokenBearer retrieves the token using the user's UID.
+    await store_access_token(
+        user_uid=str(user.uid),
+        value=access_payload,
+    )
+
+    response.set_cookie(
+        key="access_token",
+        value=access_token,
+        httponly=True,
+        secure=False,
+        samesite="lax",
+        path="/",
+    )
+
+    return {
+        "message": "Admin login successful.",
+        "admin": True,
+    }
+
+
 # ============================================================
 # GOOGLE LOGIN
 # ============================================================
@@ -320,7 +427,7 @@ async def auth_google(
 
     if added_user is None:
         added_user = await auth_service.create_user(
-            signup_data={
+            user_data={
                 "fullname": name,
                 "email": email,
                 "password": None,

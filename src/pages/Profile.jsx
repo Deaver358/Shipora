@@ -1,6 +1,11 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import shiporaLogo from "../assets/shipora-logo.jpeg";
+import { api } from "../interceptors/api";
+import {
+  getCachedProfile,
+  setCachedProfile,
+} from "../utils/profileCache";
 import "../styles/change.css";
 
 const API_URL =
@@ -103,7 +108,6 @@ function VerificationBadge({ type, label }) {
       }}
     >
       <VerifiedShape color={style.background} />
-
       {label}
     </span>
   );
@@ -111,10 +115,14 @@ function VerificationBadge({ type, label }) {
 
 function Profile() {
   const navigate = useNavigate();
+  const fileInputRef = useRef(null);
 
   const [profile, setProfile] = useState(null);
   const [fullname, setFullname] = useState("");
   const [phone, setPhone] = useState("");
+
+  const [avatarUploading, setAvatarUploading] = useState(false);
+  const [avatarPreview, setAvatarPreview] = useState(null);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -122,35 +130,175 @@ function Profile() {
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  useEffect(() => {
-    loadProfile();
-  }, []);
-
-  const loadProfile = async () => {
+  const loadProfile = async ({ force = false } = {}) => {
     try {
-      setLoading(true);
       setError("");
 
-      const response = await fetch(`${API_URL}/profile/me`, {
-        method: "GET",
-        credentials: "include",
-      });
+      if (!force) {
+        const cachedProfile = getCachedProfile();
 
-      const data = await response.json();
-
-      if (!response.ok) {
-        throw new Error(
-          data?.detail || "Unable to load your profile."
-        );
+        if (cachedProfile) {
+          setProfile(cachedProfile);
+          setFullname(cachedProfile.fullname || "");
+          setPhone(cachedProfile.phone || "");
+          setLoading(false);
+          return;
+        }
       }
+
+      setLoading(true);
+
+      const response = await api.get("profile/me");
+      const data = response.data;
 
       setProfile(data);
       setFullname(data.fullname || "");
       setPhone(data.phone || "");
+
+      setCachedProfile(data);
     } catch (err) {
-      setError(err.message || "Unable to load your profile.");
+      console.error("Unable to load profile:", err);
+
+      setError(
+        err?.response?.data?.detail ||
+          "Unable to load your profile. Please try again."
+      );
     } finally {
       setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadProfile();
+  }, []);
+
+  const handleAvatarClick = () => {
+    if (!avatarUploading) {
+      fileInputRef.current?.click();
+    }
+  };
+
+  const handleAvatarChange = async (event) => {
+    const file = event.target.files?.[0];
+
+    if (!file) return;
+
+    const allowedTypes = [
+      "image/jpeg",
+      "image/png",
+      "image/webp",
+    ];
+
+    if (!allowedTypes.includes(file.type)) {
+      setError("Please choose a JPG, PNG, or WebP image.");
+      event.target.value = "";
+      return;
+    }
+
+    const maxSize = 5 * 1024 * 1024;
+
+    if (file.size > maxSize) {
+      setError("Profile picture must be 5MB or smaller.");
+      event.target.value = "";
+      return;
+    }
+
+    let temporaryPreview = null;
+
+    try {
+      setAvatarUploading(true);
+      setError("");
+      setSuccess("");
+
+      temporaryPreview = URL.createObjectURL(file);
+      setAvatarPreview(temporaryPreview);
+
+      const formData = new FormData();
+      formData.append("file", file);
+
+      const response = await api.post(
+        "uploads/avatar",
+        formData
+      );
+
+      const uploadedUrl = response?.data?.url;
+
+      if (!uploadedUrl) {
+        throw new Error(
+          "Avatar upload did not return an image URL."
+        );
+      }
+
+      const updatedProfile = {
+        ...profile,
+        avatar_url: uploadedUrl,
+      };
+
+      setAvatarPreview(uploadedUrl);
+      setProfile(updatedProfile);
+      setCachedProfile(updatedProfile);
+
+      setSuccess("Profile picture updated successfully.");
+
+      setTimeout(() => {
+        setSuccess("");
+      }, 2500);
+
+      if (temporaryPreview) {
+        URL.revokeObjectURL(temporaryPreview);
+      }
+    } catch (err) {
+      console.error("Avatar upload failed:", err);
+
+      if (temporaryPreview) {
+        URL.revokeObjectURL(temporaryPreview);
+      }
+
+      setAvatarPreview(null);
+
+      setError(
+        err?.response?.data?.detail ||
+          "Unable to upload your profile picture. Please try again."
+      );
+    } finally {
+      setAvatarUploading(false);
+      event.target.value = "";
+    }
+  };
+
+  const handleAvatarDelete = async () => {
+    if (!profile?.avatar_url && !avatarPreview) return;
+
+    try {
+      setAvatarUploading(true);
+      setError("");
+      setSuccess("");
+
+      await api.delete("uploads/avatar");
+
+      const updatedProfile = {
+        ...profile,
+        avatar_url: null,
+      };
+
+      setAvatarPreview(null);
+      setProfile(updatedProfile);
+      setCachedProfile(updatedProfile);
+
+      setSuccess("Profile picture removed successfully.");
+
+      setTimeout(() => {
+        setSuccess("");
+      }, 2500);
+    } catch (err) {
+      console.error("Avatar deletion failed:", err);
+
+      setError(
+        err?.response?.data?.detail ||
+          "Unable to remove your profile picture. Please try again."
+      );
+    } finally {
+      setAvatarUploading(false);
     }
   };
 
@@ -193,6 +341,10 @@ function Profile() {
       setProfile(data);
       setFullname(data.fullname || "");
       setPhone(data.phone || "");
+
+      // Keep the shared profile cache synchronized.
+      setCachedProfile(data);
+
       setEditing(false);
       setSuccess("Profile updated successfully.");
 
@@ -200,7 +352,9 @@ function Profile() {
         setSuccess("");
       }, 2500);
     } catch (err) {
-      setError(err.message || "Unable to update your profile.");
+      setError(
+        err.message || "Unable to update your profile."
+      );
     } finally {
       setSaving(false);
     }
@@ -209,7 +363,10 @@ function Profile() {
   const getInitial = () => {
     if (!profile?.fullname) return "S";
 
-    return profile.fullname.trim().charAt(0).toUpperCase();
+    return profile.fullname
+      .trim()
+      .charAt(0)
+      .toUpperCase();
   };
 
   const getRole = () => {
@@ -338,25 +495,40 @@ function Profile() {
       <div className="account-page profile-page">
         <header className="account-topbar">
           <button
+            type="button"
             className="account-back-button"
             onClick={() => navigate(-1)}
-            aria-label="Go back"
           >
-            ←
+            ← Back
           </button>
 
-          <img
-            src={shiporaLogo}
-            alt="Shipora"
-            className="app-logo"
-          />
-
-          <div className="account-page-label">PROFILE</div>
+          <span className="account-page-label">
+            PROFILE
+          </span>
         </header>
 
         <main className="account-content">
           <div className="profile-loading">
-            Loading your profile...
+            <div className="profile-loading-card">
+              <div className="profile-loading-avatar"></div>
+
+              <div className="profile-loading-lines">
+                <div className="profile-loading-line profile-loading-line-title"></div>
+                <div className="profile-loading-line"></div>
+                <div className="profile-loading-line short"></div>
+              </div>
+
+              <div className="profile-loading-grid">
+                <div className="profile-loading-block"></div>
+                <div className="profile-loading-block"></div>
+                <div className="profile-loading-block"></div>
+              </div>
+
+              <div className="profile-loading-message">
+                <span className="profile-loading-spinner"></span>
+                Preparing your profile...
+              </div>
+            </div>
           </div>
         </main>
       </div>
@@ -381,15 +553,18 @@ function Profile() {
             className="app-logo"
           />
 
-          <div className="account-page-label">PROFILE</div>
+          <div className="account-page-label">
+            PROFILE
+          </div>
         </header>
 
         <main className="account-content">
           <div className="profile-error-card">
             <strong>Unable to load profile</strong>
+
             <p>{error || "Please try again."}</p>
 
-            <button onClick={loadProfile}>
+            <button onClick={() => loadProfile({ force: true })}>
               Try Again
             </button>
           </div>
@@ -419,7 +594,9 @@ function Profile() {
           className="app-logo"
         />
 
-        <div className="account-page-label">PROFILE</div>
+        <div className="account-page-label">
+          PROFILE
+        </div>
       </header>
 
       <main className="account-content">
@@ -439,10 +616,10 @@ function Profile() {
           <div className="profile-cover-glow"></div>
 
           <div className="profile-avatar-wrapper">
-            {profile.avatar_url ? (
+            {avatarPreview || profile.avatar_url ? (
               <img
-                src={profile.avatar_url}
-                alt={profile.fullname}
+                src={avatarPreview || profile.avatar_url}
+                alt={profile.fullname || "Profile"}
                 className="profile-avatar-image"
               />
             ) : (
@@ -450,6 +627,50 @@ function Profile() {
                 {getInitial()}
               </div>
             )}
+
+            <button
+              type="button"
+              className="profile-avatar-add"
+              onClick={(event) => {
+                event.stopPropagation();
+                handleAvatarClick();
+              }}
+              disabled={avatarUploading}
+              aria-label="Change profile picture"
+              title="Change profile picture"
+            >
+              +
+            </button>
+
+            {(avatarPreview || profile.avatar_url) && (
+              <button
+                type="button"
+                className="profile-avatar-delete"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  handleAvatarDelete();
+                }}
+                disabled={avatarUploading}
+                aria-label="Remove profile picture"
+                title="Remove profile picture"
+              >
+                ×
+              </button>
+            )}
+
+            {avatarUploading && (
+              <div className="profile-avatar-uploading">
+                <span className="profile-avatar-spinner" />
+              </div>
+            )}
+
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={handleAvatarChange}
+              hidden
+            />
           </div>
 
           <div className="profile-hero-info">
@@ -481,7 +702,8 @@ function Profile() {
               }}
             >
               {vendor && renderVendorBadges(vendor)}
-              {dispatcher && renderDispatcherBadges(dispatcher)}
+              {dispatcher &&
+                renderDispatcherBadges(dispatcher)}
               {both && renderBothBadges(both)}
             </div>
           </div>
@@ -514,7 +736,9 @@ function Profile() {
                 <input
                   type="text"
                   value={fullname}
-                  onChange={(e) => setFullname(e.target.value)}
+                  onChange={(e) =>
+                    setFullname(e.target.value)
+                  }
                 />
               ) : (
                 <strong>{profile.fullname || "—"}</strong>
@@ -533,7 +757,9 @@ function Profile() {
                 <input
                   type="tel"
                   value={phone}
-                  onChange={(e) => setPhone(e.target.value)}
+                  onChange={(e) =>
+                    setPhone(e.target.value)
+                  }
                 />
               ) : (
                 <strong>{profile.phone || "—"}</strong>
@@ -610,6 +836,7 @@ function Profile() {
 
               <div className="profile-detail-card">
                 <span>NIN VERIFICATION</span>
+
                 <strong>
                   {isVerified(vendor.nin_verification_status) ||
                   isVerified(vendor.nin_verified)
@@ -620,6 +847,7 @@ function Profile() {
 
               <div className="profile-detail-card">
                 <span>CAC VERIFICATION</span>
+
                 <strong>
                   {isVerified(vendor.cac_verification_status) ||
                   isVerified(vendor.cac_verified)
@@ -635,7 +863,9 @@ function Profile() {
                   {renderStars(vendor.average_rating)}
 
                   <strong>
-                    {Number(vendor.average_rating || 0).toFixed(1)}
+                    {Number(
+                      vendor.average_rating || 0
+                    ).toFixed(1)}
                   </strong>
 
                   <small>
@@ -672,16 +902,21 @@ function Profile() {
             <div className="profile-details-grid">
               <div className="profile-detail-card">
                 <span>DISPATCH NAME</span>
-                <strong>{dispatcher.dispatch_name || "—"}</strong>
+                <strong>
+                  {dispatcher.dispatch_name || "—"}
+                </strong>
               </div>
 
               <div className="profile-detail-card">
                 <span>VEHICLE TYPE</span>
-                <strong>{dispatcher.vehicle_type || "—"}</strong>
+                <strong>
+                  {dispatcher.vehicle_type || "—"}
+                </strong>
               </div>
 
               <div className="profile-detail-card">
                 <span>NIN VERIFICATION</span>
+
                 <strong>
                   {isVerified(
                     dispatcher.nin_verification_status
@@ -694,6 +929,7 @@ function Profile() {
 
               <div className="profile-detail-card">
                 <span>VEHICLE VERIFICATION</span>
+
                 <strong>
                   {isVerified(
                     dispatcher.vehicle_verification_status
@@ -760,8 +996,11 @@ function Profile() {
 
               <div className="profile-detail-card">
                 <span>NIN VERIFICATION</span>
+
                 <strong>
-                  {isVerified(both.nin_verification_status) ||
+                  {isVerified(
+                    both.nin_verification_status
+                  ) ||
                   isVerified(both.nin_verified)
                     ? "Verified"
                     : "Pending"}
@@ -770,8 +1009,11 @@ function Profile() {
 
               <div className="profile-detail-card">
                 <span>CAC VERIFICATION</span>
+
                 <strong>
-                  {isVerified(both.cac_verification_status) ||
+                  {isVerified(
+                    both.cac_verification_status
+                  ) ||
                   isVerified(both.cac_verified)
                     ? "Verified"
                     : "Pending"}
@@ -780,6 +1022,7 @@ function Profile() {
 
               <div className="profile-detail-card">
                 <span>VEHICLE VERIFICATION</span>
+
                 <strong>
                   {isVerified(
                     both.vehicle_verification_status

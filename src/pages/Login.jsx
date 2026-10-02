@@ -61,7 +61,7 @@ function Login() {
         await supabase.auth.signInWithOAuth({
           provider: "google",
           options: {
-            redirectTo: `${window.location.origin}/`,
+            redirectTo: `${window.location.origin}/home`,
             queryParams: {
               access_type: "offline",
               prompt: "select_account",
@@ -81,20 +81,17 @@ function Login() {
   };
 
   const handleModalClose = () => {
-    if (modalType === "loginSuccess") {
-      closeModal();
-
-      /*
-       * Verification is intentionally handled after authentication.
-       * The protected workspace/profile flow determines whether the
-       * user is already verified or needs to complete verification.
-       */
-      navigate("/");
-      return;
-    }
-
+  if (modalType === "loginSuccess") {
     closeModal();
-  };
+
+    // Authenticated users go to Home.
+    // VerificationPrompt is mounted on /home.
+    navigate("/home", { replace: true });
+    return;
+  }
+
+  closeModal();
+};
 
   return (
     <main className="auth-page">

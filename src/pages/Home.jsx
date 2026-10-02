@@ -1,6 +1,9 @@
 import shiporaLogo from "../assets/shipora-logo.jpeg";
+import { useEffect, useState } from "react";
 import { useNavigate, NavLink } from "react-router-dom";
 import VerificationPrompt from "../components/VerificationPrompt";
+import { api } from "../interceptors/api";
+import { getCachedProfile, setCachedProfile } from "../utils/profileCache";
 import "../index.css";
 
 function BellIcon() {
@@ -42,8 +45,56 @@ function UserIcon() {
     </svg>
   );
 }
+
 function Home() {
   const navigate = useNavigate();
+
+  const [avatarUrl, setAvatarUrl] = useState(null);
+
+  useEffect(() => {
+    let mounted = true;
+
+    const loadAvatar = async () => {
+      try {
+        /*
+         * Load from cache first.
+         * This prevents Home from making a profile API request
+         * every time the page opens.
+         */
+        const cachedProfile = getCachedProfile();
+
+        if (cachedProfile?.avatar_url) {
+          if (mounted) {
+            setAvatarUrl(cachedProfile.avatar_url);
+          }
+
+          return;
+        }
+
+        /*
+         * Only fetch from the API when there is no cached profile.
+         */
+        const response = await api.get("profile/me");
+        const profileData = response?.data;
+
+        if (!mounted) return;
+
+        setAvatarUrl(profileData?.avatar_url || null);
+
+        if (profileData) {
+          setCachedProfile(profileData);
+        }
+      } catch (error) {
+        console.error("Unable to load profile avatar:", error);
+      }
+    };
+
+    loadAvatar();
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   return (
     <div className="shipora-app">
@@ -55,47 +106,59 @@ function Home() {
           onClick={() => navigate("/")}
           aria-label="Go to Home"
         >
-          <img src={shiporaLogo} alt="Shipora" className="app-logo" />
+          <img
+            src={shiporaLogo}
+            alt="Shipora"
+            className="app-logo"
+          />
         </button>
 
         <div className="topbar-actions">
 
           {/* Notifications */}
           <button
-  className="icon-button notification-button"
-  onClick={() => navigate("/notifications")}
-  aria-label="Notifications"
->
-  <BellIcon />
+            className="icon-button notification-button"
+            onClick={() => navigate("/notifications")}
+            aria-label="Notifications"
+          >
+            <BellIcon />
 
-  <span className="notification-dot"></span>
-</button>
+            <span className="notification-dot"></span>
+          </button>
 
           {/* Profile */}
           <button
-  className="profile-button"
-  onClick={() => navigate("/profile")}
-  aria-label="Open profile"
->
-  <UserIcon />
-</button>
+            className={`profile-button ${avatarUrl ? "has-avatar" : ""}`}
+            onClick={() => navigate("/profile")}
+            aria-label="Open profile"
+          >
+            {avatarUrl ? (
+              <img
+                src={avatarUrl}
+                alt="Profile"
+                className="home-profile-avatar"
+              />
+            ) : (
+              <UserIcon />
+            )}
+          </button>
         </div>
       </header>
-      
-      <section className="home-hero-image">
-  <div className="home-hero-image-frame">
-    <img
-      src="shipora-logo.jpeg"
-      alt="Shipora logistics"
-    />
-  </div>
-</section>
 
+      {/* ================= HERO IMAGE ================= */}
+      <section className="home-hero-image">
+        <div className="home-hero-image-frame">
+          <img
+            src={shiporaLogo}
+            alt="Shipora logistics"
+          />
+        </div>
+      </section>
 
       {/* ================= MAIN CONTENT ================= */}
       <main className="app-main">
 
-        {/* HERO */}
+        {/* ================= HERO ================= */}
         <section className="hero" id="home">
 
           <div className="hero-content">
@@ -158,7 +221,6 @@ function Home() {
             </div>
 
           </div>
-
 
           {/* HERO VISUAL */}
           <div className="hero-visual">
@@ -227,7 +289,6 @@ function Home() {
 
             </div>
 
-
             <div className="floating-card floating-card-one">
 
               <span className="floating-icon">✓</span>
@@ -238,7 +299,6 @@ function Home() {
               </div>
 
             </div>
-
 
             <div className="floating-card floating-card-two">
 
@@ -274,20 +334,27 @@ function Home() {
 
           </div>
 
-
           <div className="tracking-box">
 
             <div className="tracking-input-wrapper">
 
               <label htmlFor="tracking-number">
+
                 <div className="eyebrow">
                   <span className="eyebrow-dot"></span>
                   <h2>Tracking today</h2>
                 </div>
-                 <br />
-                <p>If you already have a shipment with Shipora, you can check its latest status, location, and delivery progress anytime....Have a shipment already?</p>
-                
+
+                <br />
+
+                <p>
+                  If you already have a shipment with Shipora, you can check
+                  its latest status, location, and delivery progress
+                  anytime....Have a shipment already?
+                </p>
+
               </label>
+
             </div>
 
             <button
@@ -301,7 +368,6 @@ function Home() {
           </div>
 
         </section>
-
 
         {/* ================= SERVICES ================= */}
         <section className="services-section" id="services">
@@ -322,73 +388,70 @@ function Home() {
 
           </div>
 
-
           <div className="service-grid">
 
-  <article className="service-card">
+            <article className="service-card">
 
-    <span className="service-number">01</span>
+              <span className="service-number">01</span>
 
-    <div className="service-icon">↗</div>
+              <div className="service-icon">↗</div>
 
-    <h3>Freight Forwarding</h3>
+              <h3>Freight Forwarding</h3>
 
-    <p>
-      Coordinate the movement of your goods across destinations
-      with a streamlined dispatch process designed to keep every
-      shipment organized and on schedule.
-    </p>
+              <p>
+                Coordinate the movement of your goods across destinations
+                with a streamlined dispatch process designed to keep every
+                shipment organized and on schedule.
+              </p>
 
-    <button onClick={() => navigate("/shipments")}>
-      Dispatch Shipment →
-    </button>
+              <button onClick={() => navigate("/shipments")}>
+                Dispatch Shipment →
+              </button>
 
-  </article>
+            </article>
 
+            <article className="service-card featured">
 
-  <article className="service-card featured">
+              <span className="service-number">02</span>
 
-    <span className="service-number">02</span>
+              <div className="service-icon">◈</div>
 
-    <div className="service-icon">◈</div>
+              <h3>Shipment Tracking</h3>
 
-    <h3>Shipment Tracking</h3>
+              <p>
+                Keep customers informed with accessible tracking and clear
+                shipment status updates throughout the delivery journey.
+              </p>
 
-    <p>
-      Keep customers informed with accessible tracking and clear
-      shipment status updates throughout the delivery journey.
-    </p>
+              <button onClick={() => navigate("/tracking")}>
+                Track Shipment →
+              </button>
 
-    <button onClick={() => navigate("/tracking")}>
-      Track Shipment →
-    </button>
+            </article>
 
-  </article>
+            <article className="service-card">
 
+              <span className="service-number">03</span>
 
-  <article className="service-card">
+              <div className="service-icon">⌁</div>
 
-    <span className="service-number">03</span>
+              <h3>Delivery Management</h3>
 
-    <div className="service-icon">⌁</div>
+              <p>
+                Create and manage delivery requests with the destination
+                and shipment details needed to move goods efficiently
+                through to final delivery.
+              </p>
 
-    <h3>Delivery Management</h3>
+              <button onClick={() => navigate("/shipments")}>
+                Create Shipment →
+              </button>
 
-    <p>
-      Create and manage delivery requests with the destination
-      and shipment details needed to move goods efficiently
-      through to final delivery.
-    </p>
+            </article>
 
-    <button onClick={() => navigate("/shipments")}>
-      Create Shipment →
-    </button>
+          </div>
 
-  </article>
-
-</div>
         </section>
-
 
         {/* ================= SHIPORA FEATURES ================= */}
         <section className="process-section" id="how-it-works">
@@ -404,7 +467,6 @@ function Home() {
 
           </div>
 
-
           <div className="process-grid">
 
             <div className="process-step">
@@ -413,6 +475,7 @@ function Home() {
 
               <div>
                 <h3>Create a Shipment</h3>
+
                 <p>
                   Vendors can create and manage delivery requests directly
                   through Shipora.
@@ -421,13 +484,13 @@ function Home() {
 
             </div>
 
-
             <div className="process-step">
 
               <span>02</span>
 
               <div>
                 <h3>Find a Dispatch</h3>
+
                 <p>
                   Eligible dispatch users can discover and claim available
                   delivery opportunities.
@@ -436,13 +499,13 @@ function Home() {
 
             </div>
 
-
             <div className="process-step">
 
               <span>03</span>
 
               <div>
                 <h3>Track the Journey</h3>
+
                 <p>
                   Follow shipment progress from pickup through transit and
                   final delivery.
@@ -451,13 +514,13 @@ function Home() {
 
             </div>
 
-
             <div className="process-step">
 
               <span>04</span>
 
               <div>
                 <h3>Complete Delivery</h3>
+
                 <p>
                   Delivery status is updated and the completed shipment
                   remains available in your records.
@@ -469,7 +532,6 @@ function Home() {
           </div>
 
         </section>
-
 
         {/* ================= ABOUT ================= */}
         <section className="about-section" id="about">
@@ -499,7 +561,6 @@ function Home() {
 
           </div>
 
-
           <div className="about-highlight">
 
             <span>SHIPORA</span>
@@ -511,7 +572,6 @@ function Home() {
           </div>
 
         </section>
-
 
         {/* ================= CTA ================= */}
         <section className="cta-section" id="contact">
@@ -532,7 +592,6 @@ function Home() {
 
           </div>
 
-
           <button
             className="primary-button"
             onClick={() => navigate("/shipments")}
@@ -547,130 +606,125 @@ function Home() {
 
       </main>
 
+      {/* ================= BOTTOM NAVIGATION ================= */}
+      <nav className="bottom-nav">
 
-{/* ================= BOTTOM NAVIGATION ================= */}
-<nav className="bottom-nav">
+        <NavLink
+          to="/Home"
+          className={({ isActive }) =>
+            `bottom-nav-item ${isActive ? "active" : ""}`
+          }
+        >
+          <svg viewBox="0 0 24 24" fill="none">
+            <path
+              d="M3 10.5L12 3L21 10.5V21H3V10.5Z"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M9 21V14H15V21"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+            />
+          </svg>
 
-  <NavLink
-    to="/Home"
-    className={({ isActive }) =>
-      `bottom-nav-item ${isActive ? "active" : ""}`
-    }
-  >
-    <svg viewBox="0 0 24 24" fill="none">
-      <path
-        d="M3 10.5L12 3L21 10.5V21H3V10.5Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M9 21V14H15V21"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-    </svg>
+          <span>Home</span>
+        </NavLink>
 
-    <span>Home</span>
-  </NavLink>
+        <NavLink
+          to="/shipments"
+          className={({ isActive }) =>
+            `bottom-nav-item ${isActive ? "active" : ""}`
+          }
+        >
+          <svg viewBox="0 0 24 24" fill="none">
+            <path
+              d="M4 7.5L12 3L20 7.5V16.5L12 21L4 16.5V7.5Z"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M4 7.5L12 12L20 7.5"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinejoin="round"
+            />
+            <path
+              d="M12 12V21"
+              stroke="currentColor"
+              strokeWidth="1.8"
+            />
+          </svg>
 
+          <span>Shipments</span>
+        </NavLink>
 
-  <NavLink
-    to="/shipments"
-    className={({ isActive }) =>
-      `bottom-nav-item ${isActive ? "active" : ""}`
-    }
-  >
-    <svg viewBox="0 0 24 24" fill="none">
-      <path
-        d="M4 7.5L12 3L20 7.5V16.5L12 21L4 16.5V7.5Z"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M4 7.5L12 12L20 7.5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinejoin="round"
-      />
-      <path
-        d="M12 12V21"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-    </svg>
+        <NavLink
+          to="/tracking"
+          className={({ isActive }) =>
+            `bottom-nav-item ${isActive ? "active" : ""}`
+          }
+        >
+          <svg viewBox="0 0 24 24" fill="none">
+            <circle
+              cx="12"
+              cy="12"
+              r="8.5"
+              stroke="currentColor"
+              strokeWidth="1.8"
+            />
+            <path
+              d="M12 7V12L15.5 14"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+          </svg>
 
-    <span>Shipments</span>
-  </NavLink>
+          <span>Tracking</span>
+        </NavLink>
 
+        <NavLink
+          to="/dashboard"
+          className={({ isActive }) =>
+            `bottom-nav-item ${isActive ? "active" : ""}`
+          }
+        >
+          <svg viewBox="0 0 24 24" fill="none">
+            <path
+              d="M4 19V11"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+            <path
+              d="M10 19V5"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+            <path
+              d="M16 19V9"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+            <path
+              d="M22 19V3"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+            />
+          </svg>
 
-  <NavLink
-    to="/tracking"
-    className={({ isActive }) =>
-      `bottom-nav-item ${isActive ? "active" : ""}`
-    }
-  >
-    <svg viewBox="0 0 24 24" fill="none">
-      <circle
-        cx="12"
-        cy="12"
-        r="8.5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-      />
-      <path
-        d="M12 7V12L15.5 14"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-        strokeLinejoin="round"
-      />
-    </svg>
+          <span>Dashboard</span>
+        </NavLink>
 
-    <span>Tracking</span>
-  </NavLink>
-
-
-  <NavLink
-    to="/dashboard"
-    className={({ isActive }) =>
-      `bottom-nav-item ${isActive ? "active" : ""}`
-    }
-  >
-    <svg viewBox="0 0 24 24" fill="none">
-      <path
-        d="M4 19V11"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <path
-        d="M10 19V5"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <path
-        d="M16 19V9"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-      <path
-        d="M22 19V3"
-        stroke="currentColor"
-        strokeWidth="1.8"
-        strokeLinecap="round"
-      />
-    </svg>
-
-    <span>Dashboard</span>
-  </NavLink>
-
-</nav>
-
+      </nav>
 
       {/* ================= FOOTER ================= */}
       <footer className="footer">
@@ -689,7 +743,6 @@ function Home() {
 
         </div>
 
-
         <div className="footer-contact">
 
           <h4>Contact</h4>
@@ -707,7 +760,6 @@ function Home() {
           </a>
 
         </div>
-
 
         <div className="footer-bottom">
 

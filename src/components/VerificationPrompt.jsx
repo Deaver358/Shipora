@@ -1,6 +1,10 @@
-import { useEffect, useState } from "react";
+﻿import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../interceptors/api";
+import {
+  getCached,
+  setCached,
+} from "../utils/appCache";
 import "../index.css";
 
 function isTrue(value) {
@@ -32,10 +36,6 @@ function getVerificationRequired(profile) {
     );
   }
 
-  /*
-   * A normal Shipora account that has not selected/completed
-   * a role should also be allowed to see the verification prompt.
-   */
   return true;
 }
 
@@ -51,11 +51,23 @@ function VerificationPrompt() {
 
     const checkVerification = async () => {
       try {
-        const response = await api.get("profile/me", {
-          withCredentials: true,
-        });
+        let profile = getCached("profile");
 
-        const profile = response?.data;
+        if (!profile) {
+          const response = await api.get("profile/me", {
+            withCredentials: true,
+          });
+
+          profile = response?.data;
+
+          if (profile) {
+            setCached(
+              "profile",
+              profile,
+              5 * 60 * 1000
+            );
+          }
+        }
 
         if (cancelled || !profile) {
           return;
@@ -86,10 +98,6 @@ function VerificationPrompt() {
           setVisible(true);
         }
       } catch (error) {
-        /*
-         * Do not interrupt the user's normal Home experience
-         * if the profile request fails.
-         */
         console.error(
           "Verification prompt profile check failed:",
           error
@@ -117,10 +125,6 @@ function VerificationPrompt() {
   };
 
   const handleVerify = () => {
-    if (userKey) {
-      localStorage.setItem(userKey, "handled");
-    }
-
     setVisible(false);
     navigate("/verify-role");
   };
@@ -168,7 +172,6 @@ function VerificationPrompt() {
               stroke="currentColor"
               strokeWidth="1.9"
               strokeLinecap="round"
-              strokeLinejoin="round"
             />
           </svg>
         </div>

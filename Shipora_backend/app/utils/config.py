@@ -29,8 +29,9 @@ class Settings(BaseSettings):
     ADMIN_PASSWORD: str
     PAYSTACK_SECRET_KEY: str = ""
     PAYSTACK_WEBHOOK_SECRET: str = ""
-    KYC_PROVIDER_BASE_URL: str = ""
-    KYC_PROVIDER_API_KEY: str = ""
+    KYC_PROVIDER_BASE_URL: str = "https://api.qoreid.com"
+    KYC_CLIENT_ID: str = "MNZK4QC6RVY5Y5C3TX14"
+    KYC_CLIENT_SECRET: str = "59fe929a767140d99dd53b51b0dca4c2"
     KYC_STRICT: bool = False
     UPLOAD_MAX_MB: int = 10
 

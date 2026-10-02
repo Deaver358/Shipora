@@ -12,6 +12,7 @@ import ResetPassword from "./pages/ResetPassword";
 import Terms from "./pages/Terms";
 import Privacy from "./pages/Privacy";
 import AdminKYC from "./pages/AdminKYC";
+import AdminLogin from "./pages/AdminLogin";
 import AdminDisputes from "./pages/AdminDisputes";
 import Rating from "./pages/Rating";
 import Checkout from "./pages/Checkout";
@@ -66,6 +67,7 @@ function App() {
         <Route path="/rating" element={<Rating />} />
         <Route path="/admin-kyc" element={<AdminKYC />} />
 <Route path="/admin/disputes" element={<AdminDisputes />} />
+<Route path="/admin-login" element={<AdminLogin />} />
 
 <Route path="/checkout/:token" element={<Checkout />} />
 <Route path="/payment-result" element={<PaymentResult />} />

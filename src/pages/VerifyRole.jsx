@@ -148,11 +148,11 @@ function VerifyRole() {
         </div>
 
         <button
-          type="button"
-          className="verify-back-button"
-          onClick={() => navigate("/Home")}
-        >
-          ← Back to Home
+            type="button"
+            className="verify-back-button"
+            onClick={() => navigate(-1)}
+          >
+            ← Back
         </button>
       </section>
     </main>

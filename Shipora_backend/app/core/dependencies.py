@@ -122,10 +122,29 @@ class ValidUser:
         if not active_user.verified:
             raise HTTPException(
                 detail="account not verified",
-                status=status.HTTP_401_UNAUTHORIZED
+             status_code=status.HTTP_401_UNAUTHORIZED
             )
 
         return active_user
+    
+async def get_authenticated_user(
+    token: dict = Depends(AccessTokenBearer()),
+    session: AsyncSession = Depends(session),
+):
+    user_uid = token.get("user").get("uid")
+
+    active_user = await auth_service.get_uid_user(
+        uid=user_uid,
+        session=session,
+    )
+
+    if not active_user:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail="User not found",
+        )
+
+    return active_user   
 
 
 async def get_this_user(
