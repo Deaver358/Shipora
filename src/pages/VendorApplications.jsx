@@ -1,7 +1,15 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { api } from "../api/api";
+import { api } from "../interceptors/api";
+import {
+  getCached,
+  setCached,
+  clearCached,
+} from "../utils/appCache";
 import "../styles/change.css";
+
+const SHIPMENTS_TTL = 30 * 1000;
+const APPLICATIONS_TTL = 30 * 1000;
 
 function formatMoney(amount) {
   const value = Number(amount || 0) / 100;
@@ -45,40 +53,121 @@ function VendorApplications() {
     loadApplications();
   }, []);
 
-  async function loadApplications() {
+  async function loadApplications({ force = false } = {}) {
     try {
-      setLoading(true);
       setError("");
 
-      const shipmentsResponse = await api.get("shipments/mine");
+      // --------------------------------------------------
+      // SHOW CACHED APPLICATIONS IMMEDIATELY
+      // --------------------------------------------------
 
-      const shipments = Array.isArray(shipmentsResponse.data)
-        ? shipmentsResponse.data
-        : [];
+      if (!force) {
+        const cachedApplications = getCached(
+          "vendor_applications"
+        );
+
+        if (Array.isArray(cachedApplications)) {
+          setApplications(cachedApplications);
+          setLoading(false);
+
+          // Refresh silently in the background.
+          loadApplications({ force: true });
+          return;
+        }
+      }
+
+      setLoading(true);
+
+      // --------------------------------------------------
+      // LOAD SHIPMENTS
+      // --------------------------------------------------
+
+      let shipments = null;
+
+      if (!force) {
+        shipments = getCached("vendor_shipments");
+      }
+
+      if (!Array.isArray(shipments)) {
+        const shipmentsResponse = await api.get(
+          "shipments/mine"
+        );
+
+        shipments = Array.isArray(shipmentsResponse.data)
+          ? shipmentsResponse.data
+          : [];
+
+        setCached(
+          "vendor_shipments",
+          shipments,
+          SHIPMENTS_TTL
+        );
+      }
+
+      // --------------------------------------------------
+      // LOAD APPLICATIONS FOR EACH SHIPMENT
+      // --------------------------------------------------
 
       const results = await Promise.all(
         shipments.map(async (shipment) => {
+          const cacheKey =
+            `vendor_applications_${shipment.shipment_id}`;
+
+          if (!force) {
+            const cached = getCached(cacheKey);
+
+            if (Array.isArray(cached)) {
+              return cached.map((application) => ({
+                ...application,
+                shipment,
+              }));
+            }
+          }
+
           try {
             const response = await api.get(
               `shipments/${shipment.shipment_id}/applications`
             );
 
-            const shipmentApplications = Array.isArray(response.data)
-              ? response.data
-              : [];
+            const shipmentApplications =
+              Array.isArray(response.data)
+                ? response.data
+                : [];
 
-            return shipmentApplications.map((application) => ({
-              ...application,
-              shipment,
-            }));
+            setCached(
+              cacheKey,
+              shipmentApplications,
+              APPLICATIONS_TTL
+            );
+
+            return shipmentApplications.map(
+              (application) => ({
+                ...application,
+                shipment,
+              })
+            );
           } catch {
             return [];
           }
         })
       );
 
-      setApplications(results.flat());
+      const flattenedApplications =
+        results.flat();
+
+      setApplications(flattenedApplications);
+
+      setCached(
+        "vendor_applications",
+        flattenedApplications,
+        APPLICATIONS_TTL
+      );
     } catch (err) {
+      console.error(
+        "Failed to load applications:",
+        err
+      );
+
       setError(
         err?.response?.data?.detail ||
           "Unable to load shipment applications."
@@ -97,7 +186,22 @@ function VendorApplications() {
         `shipments/applications/${applicationId}/accept`
       );
 
-      await loadApplications();
+      // The application state has changed.
+      clearCached("vendor_applications");
+
+      // Clear individual shipment application caches.
+      applications.forEach((application) => {
+        if (application.shipment?.shipment_id) {
+          clearCached(
+            `vendor_applications_${application.shipment.shipment_id}`
+          );
+        }
+      });
+
+      // Shipment status may also have changed.
+      clearCached("vendor_shipments");
+
+      await loadApplications({ force: true });
     } catch (err) {
       setError(
         err?.response?.data?.detail ||
@@ -112,7 +216,8 @@ function VendorApplications() {
     () =>
       applications.filter(
         (item) =>
-          String(item.status).toLowerCase() === "pending"
+          String(item.status).toLowerCase() ===
+          "pending"
       ).length,
     [applications]
   );
@@ -171,7 +276,13 @@ function VendorApplications() {
           <div className="applications-alert">
             <span>!</span>
             <p>{error}</p>
-            <button onClick={loadApplications}>Retry</button>
+            <button
+              onClick={() =>
+                loadApplications({ force: true })
+              }
+            >
+              Retry
+            </button>
           </div>
         )}
 
@@ -197,6 +308,7 @@ function VendorApplications() {
           <section className="applications-grid">
             {applications.map((application) => {
               const shipment = application.shipment;
+
               const pending =
                 String(application.status).toLowerCase() ===
                 "pending";
@@ -235,7 +347,10 @@ function VendorApplications() {
                       </h2>
 
                       <span>
-                        Applied {formatDate(application.created_at)}
+                        Applied{" "}
+                        {formatDate(
+                          application.created_at
+                        )}
                       </span>
                     </div>
                   </div>
@@ -250,14 +365,16 @@ function VendorApplications() {
                     <div className="route-location">
                       <small>PICKUP</small>
                       <strong>
-                        {shipment?.pickup || "Not provided"}
+                        {shipment?.pickup ||
+                          "Not provided"}
                       </strong>
                     </div>
 
                     <div className="route-location">
                       <small>DESTINATION</small>
                       <strong>
-                        {shipment?.destination || "Not provided"}
+                        {shipment?.destination ||
+                          "Not provided"}
                       </strong>
                     </div>
                   </div>
@@ -265,6 +382,7 @@ function VendorApplications() {
                   <div className="application-info-row">
                     <div className="application-info-item">
                       <span>Dispatcher ID</span>
+
                       <strong>
                         {application.dispatcher_id
                           ? String(
@@ -276,6 +394,7 @@ function VendorApplications() {
 
                     <div className="application-info-item">
                       <span>Proposed fee</span>
+
                       <strong className="fee-value">
                         {formatMoney(
                           application.proposed_fee
@@ -285,8 +404,10 @@ function VendorApplications() {
 
                     <div className="application-info-item">
                       <span>Application type</span>
+
                       <strong>
-                        {application.initiated_by === "VENDOR"
+                        {application.initiated_by ===
+                        "VENDOR"
                           ? "Invitation"
                           : "Dispatcher"}
                       </strong>
@@ -308,7 +429,10 @@ function VendorApplications() {
 
                       <button
                         className="accept-application-button"
-                        disabled={processingId === application.application_id}
+                        disabled={
+                          processingId ===
+                          application.application_id
+                        }
                         onClick={() =>
                           acceptApplication(
                             application.application_id

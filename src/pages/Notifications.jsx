@@ -1,10 +1,14 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../interceptors/api";
+import {
+  getCached,
+  setCached,
+} from "../utils/appCache";
 import shiporaLogo from "../assets/shipora-logo.jpeg";
 import "../styles/change.css";
 
-const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1.0";
+const NOTIFICATIONS_TTL = 30 * 1000;
 
 function NotificationIcon({ type }) {
   const normalizedType = String(type || "").toLowerCase();
@@ -206,9 +210,10 @@ function formatNotificationTime(value) {
   return date.toLocaleString("en-NG", {
     day: "numeric",
     month: "short",
-    year: date.getFullYear() !== now.getFullYear()
-      ? "numeric"
-      : undefined,
+    year:
+      date.getFullYear() !== now.getFullYear()
+        ? "numeric"
+        : undefined,
     hour: "numeric",
     minute: "2-digit",
   });
@@ -225,55 +230,143 @@ function Notifications() {
   const [markingAll, setMarkingAll] = useState(false);
   const [error, setError] = useState("");
 
-  const loadNotifications = async () => {
-    setLoading(true);
-    setError("");
+  // ================= CACHE HELPERS =================
 
+  const saveNotificationCache = (
+    notificationList,
+    count
+  ) => {
+    setCached(
+      "notifications_list",
+      notificationList,
+      NOTIFICATIONS_TTL
+    );
+
+    setCached(
+      "notifications_unread_count",
+      count,
+      NOTIFICATIONS_TTL
+    );
+  };
+
+  // ================= LOAD NOTIFICATIONS =================
+
+  const loadNotifications = async ({
+    force = false,
+  } = {}) => {
     try {
-      const [notificationsResponse, countResponse] =
-        await Promise.all([
-          fetch(`${API_URL}/notifications/`, {
-            credentials: "include",
-          }),
-          fetch(`${API_URL}/notifications/unread-count`, {
-            credentials: "include",
-          }),
-        ]);
+      setError("");
+
+      // ------------------------------------------------
+      // CACHE-FIRST
+      // ------------------------------------------------
+
+      if (!force) {
+        const cachedNotifications = getCached(
+          "notifications_list"
+        );
+
+        const cachedUnreadCount = getCached(
+          "notifications_unread_count"
+        );
+
+        const hasNotificationCache =
+          Array.isArray(cachedNotifications);
+
+        const hasCountCache =
+          cachedUnreadCount !== null;
+
+        if (hasNotificationCache) {
+          setNotifications(cachedNotifications);
+        }
+
+        if (hasCountCache) {
+          setUnreadCount(
+            Number(cachedUnreadCount || 0)
+          );
+        }
+
+        if (
+          hasNotificationCache ||
+          hasCountCache
+        ) {
+          setLoading(false);
+
+          // Refresh silently in the background.
+          loadNotifications({ force: true });
+          return;
+        }
+      }
+
+      // ------------------------------------------------
+      // FRESH REQUESTS
+      // ------------------------------------------------
+
+      if (!getCached("notifications_list")) {
+        setLoading(true);
+      }
+
+      const [
+        notificationsResponse,
+        countResponse,
+      ] = await Promise.all([
+        api.get("notifications/"),
+        api.get("notifications/unread-count"),
+      ]);
 
       const notificationsData =
-        await notificationsResponse.json().catch(() => null);
+        notificationsResponse?.data;
 
       const countData =
-        await countResponse.json().catch(() => null);
+        countResponse?.data;
 
-      if (!notificationsResponse.ok) {
-        throw new Error(
-          notificationsData?.detail ||
-            "Unable to load your notifications."
-        );
-      }
-
-      if (!countResponse.ok) {
-        throw new Error(
-          countData?.detail ||
-            "Unable to load your unread notification count."
-        );
-      }
-
-      setNotifications(
+      const notificationList =
         Array.isArray(notificationsData)
           ? notificationsData
-          : []
+          : [];
+
+      const count = Number(
+        countData?.unread_count || 0
       );
 
-      setUnreadCount(
-        Number(countData?.unread_count || 0)
+      setNotifications(notificationList);
+      setUnreadCount(count);
+
+      saveNotificationCache(
+        notificationList,
+        count
       );
     } catch (err) {
-      setError(
-        err.message ||
-          "Something went wrong while loading notifications."
+      console.error(
+        "Notification loading error:",
+        err
       );
+
+      const message =
+        err?.response?.data?.detail ||
+        err?.message ||
+        "Something went wrong while loading notifications.";
+
+      // If cached data is already visible, don't
+      // replace it with a blocking error.
+      const cachedNotifications =
+        getCached("notifications_list");
+
+      if (Array.isArray(cachedNotifications)) {
+        setNotifications(cachedNotifications);
+
+        const cachedCount = getCached(
+          "notifications_unread_count"
+        );
+
+        if (cachedCount !== null) {
+          setUnreadCount(
+            Number(cachedCount || 0)
+          );
+        }
+      } else {
+        setError(message);
+      }
     } finally {
       setLoading(false);
     }
@@ -283,55 +376,56 @@ function Notifications() {
     loadNotifications();
   }, []);
 
+  // ================= MARK ONE AS READ =================
+
   const markAsRead = async (notification) => {
     if (notification.read || processingId) {
       return;
     }
 
-    setProcessingId(notification.notification_id);
+    setProcessingId(
+      notification.notification_id
+    );
     setError("");
 
     try {
-      const response = await fetch(
-        `${API_URL}/notifications/${notification.notification_id}/read`,
-        {
-          method: "PATCH",
-          credentials: "include",
-        }
+      await api.patch(
+        `notifications/${notification.notification_id}/read`
       );
 
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          data?.detail ||
-            "Unable to mark notification as read."
-        );
-      }
-
-      setNotifications((current) =>
-        current.map((item) =>
-          item.notification_id === notification.notification_id
+      const updatedNotifications =
+        notifications.map((item) =>
+          item.notification_id ===
+          notification.notification_id
             ? {
                 ...item,
                 read: true,
               }
             : item
-        )
-      );
+        );
 
-      setUnreadCount((current) =>
-        Math.max(0, current - 1)
+      const updatedUnreadCount =
+        Math.max(0, unreadCount - 1);
+
+      setNotifications(updatedNotifications);
+      setUnreadCount(updatedUnreadCount);
+
+      saveNotificationCache(
+        updatedNotifications,
+        updatedUnreadCount
       );
     } catch (err) {
       setError(
-        err.message ||
+        err?.response?.data?.detail ||
+          err?.message ||
           "Unable to update this notification."
       );
     } finally {
       setProcessingId(null);
     }
   };
+
+  // ================= MARK ALL AS READ =================
 
   const markAllAsRead = async () => {
     if (!unreadCount || markingAll) {
@@ -342,34 +436,29 @@ function Notifications() {
     setError("");
 
     try {
-      const response = await fetch(
-        `${API_URL}/notifications/read-all`,
-        {
-          method: "PATCH",
-          credentials: "include",
-        }
+      await api.patch(
+        "notifications/read-all"
       );
 
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          data?.detail ||
-            "Unable to mark all notifications as read."
+      const updatedNotifications =
+        notifications.map(
+          (notification) => ({
+            ...notification,
+            read: true,
+          })
         );
-      }
 
-      setNotifications((current) =>
-        current.map((notification) => ({
-          ...notification,
-          read: true,
-        }))
-      );
-
+      setNotifications(updatedNotifications);
       setUnreadCount(0);
+
+      saveNotificationCache(
+        updatedNotifications,
+        0
+      );
     } catch (err) {
       setError(
-        err.message ||
+        err?.response?.data?.detail ||
+          err?.message ||
           "Unable to mark all notifications as read."
       );
     } finally {
@@ -377,7 +466,11 @@ function Notifications() {
     }
   };
 
-  const deleteNotification = async (notificationId) => {
+  // ================= DELETE =================
+
+  const deleteNotification = async (
+    notificationId
+  ) => {
     if (processingId) {
       return;
     }
@@ -386,48 +479,46 @@ function Notifications() {
     setError("");
 
     const notification = notifications.find(
-      (item) => item.notification_id === notificationId
+      (item) =>
+        item.notification_id === notificationId
     );
 
     try {
-      const response = await fetch(
-        `${API_URL}/notifications/${notificationId}`,
-        {
-          method: "DELETE",
-          credentials: "include",
-        }
+      await api.delete(
+        `notifications/${notificationId}`
       );
 
-      const data = await response.json().catch(() => null);
-
-      if (!response.ok) {
-        throw new Error(
-          data?.detail ||
-            "Unable to delete notification."
-        );
-      }
-
-      setNotifications((current) =>
-        current.filter(
+      const updatedNotifications =
+        notifications.filter(
           (item) =>
-            item.notification_id !== notificationId
-        )
-      );
-
-      if (notification && !notification.read) {
-        setUnreadCount((current) =>
-          Math.max(0, current - 1)
+            item.notification_id !==
+            notificationId
         );
-      }
+
+      const updatedUnreadCount =
+        notification && !notification.read
+          ? Math.max(0, unreadCount - 1)
+          : unreadCount;
+
+      setNotifications(updatedNotifications);
+      setUnreadCount(updatedUnreadCount);
+
+      saveNotificationCache(
+        updatedNotifications,
+        updatedUnreadCount
+      );
     } catch (err) {
       setError(
-        err.message ||
+        err?.response?.data?.detail ||
+          err?.message ||
           "Unable to delete this notification."
       );
     } finally {
       setProcessingId(null);
     }
   };
+
+  // ================= LOADING =================
 
   if (loading) {
     return (
@@ -474,6 +565,8 @@ function Notifications() {
       </div>
     );
   }
+
+  // ================= RENDER =================
 
   return (
     <div className="account-page notifications-page">
@@ -530,7 +623,11 @@ function Notifications() {
 
             <button
               type="button"
-              onClick={loadNotifications}
+              onClick={() =>
+                loadNotifications({
+                  force: true,
+                })
+              }
             >
               Try again
             </button>
@@ -564,7 +661,9 @@ function Notifications() {
           <section className="notification-list">
             {notifications.map((notification) => {
               const notificationClass =
-                getNotificationClass(notification.type);
+                getNotificationClass(
+                  notification.type
+                );
 
               const isProcessing =
                 processingId ===
@@ -574,13 +673,17 @@ function Notifications() {
                 <article
                   key={notification.notification_id}
                   className={`notification-card ${
-                    notification.read ? "" : "unread"
+                    notification.read
+                      ? ""
+                      : "unread"
                   }`}
                 >
                   <button
                     type="button"
                     className={`notification-main ${
-                      notification.read ? "" : "unread"
+                      notification.read
+                        ? ""
+                        : "unread"
                     }`}
                     onClick={() =>
                       markAsRead(notification)

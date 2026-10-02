@@ -522,14 +522,7 @@ function VerifyVendor() {
           </section>
 
           <div className="verification-actions">
-            <button
-              type="button"
-              className="verification-secondary-button"
-              onClick={() => navigate("/verify-role")}
-              disabled={submitting}
-            >
-              ← Back
-            </button>
+            
 
             <button
               type="submit"

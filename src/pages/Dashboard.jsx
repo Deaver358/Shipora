@@ -1,7 +1,11 @@
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { api } from "../interceptors/api";
+import { getCached, setCached } from "../utils/appCache";
 import shiporaLogo from "../assets/shipora-logo.jpeg";
 import "../index.css";
+
+const WALLET_TTL = 30 * 1000;
 
 function Dashboard() {
   const navigate = useNavigate();
@@ -17,124 +21,151 @@ function Dashboard() {
 
   const currency = "₦";
 
-  // ================= BACKEND =================
-
-  const API_BASE_URL =
-    import.meta.env.VITE_API_URL ||
-    "http://localhost:8000/api/v1.0";
-
   // ================= LOAD WALLET =================
 
   useEffect(() => {
+    let mounted = true;
+
+    const cachedBalance = getCached("wallet_balance");
+    const cachedTransactions = getCached(
+      "wallet_transactions"
+    );
+
+    const hasCachedBalance =
+      cachedBalance &&
+      typeof cachedBalance === "object";
+
+    const hasCachedTransactions =
+      Array.isArray(cachedTransactions);
+
+    // --------------------------------------------------
+    // SHOW CACHED DATA IMMEDIATELY
+    // --------------------------------------------------
+
+    if (hasCachedBalance) {
+      setBalance(
+        Number(cachedBalance?.available_balance || 0)
+      );
+
+      setHeldForDelivery(
+        Number(cachedBalance?.held_for_delivery || 0)
+      );
+    }
+
+    if (hasCachedTransactions) {
+      setTransactions(cachedTransactions);
+    }
+
+    const hasCache =
+      hasCachedBalance || hasCachedTransactions;
+
+    if (hasCache) {
+      setWalletLoading(false);
+    }
+
+    // --------------------------------------------------
+    // FETCH FRESH DATA IN BACKGROUND
+    // --------------------------------------------------
+
     const loadWallet = async () => {
       try {
-        setWalletLoading(true);
+        if (!hasCache) {
+          setWalletLoading(true);
+        }
+
         setWalletError("");
 
-        // ---------------- BALANCE ----------------
+        // Balance and transactions are independent,
+        // so request them at the same time.
+        const [
+          balanceResponse,
+          transactionsResponse,
+        ] = await Promise.all([
+          api.get("wallet/balance"),
+          api.get("wallet/transactions"),
+        ]);
 
-        const balanceResponse = await fetch(
-          `${API_BASE_URL}/wallet/balance`,
-          {
-            method: "GET",
-            credentials: "include",
-          }
-        );
+        if (!mounted) return;
 
-        let balanceData = null;
+        const balanceData =
+          balanceResponse?.data || {};
 
-        try {
-          balanceData = await balanceResponse.json();
-        } catch {
-          balanceData = null;
-        }
+        const transactionsData =
+          transactionsResponse?.data;
 
-        if (!balanceResponse.ok) {
-          throw new Error(
-            balanceData?.detail ||
-              "Unable to load wallet balance."
-          );
-        }
-
-        /*
-         * Actual backend response:
-         *
-         * {
-         *   total_topped_up,
-         *   total_earned,
-         *   total_refunded,
-         *   total_spent,
-         *   total_withdrawn,
-         *   pending_withdrawal,
-         *   available_balance
-         * }
-         */
-
-        setBalance(
-          Number(balanceData?.available_balance || 0)
-        );
-
-        /*
-         * The current backend does not return a true
-         * held_for_delivery value.
-         *
-         * Do NOT use total_spent for this because
-         * total_spent is historical ESCROW_HOLD activity,
-         * not the current amount still being held.
-         */
-        setHeldForDelivery(
-          Number(balanceData?.held_for_delivery || 0)
-        );
-
-        // ---------------- TRANSACTIONS ----------------
-
-        const transactionsResponse = await fetch(
-          `${API_BASE_URL}/wallet/transactions`,
-          {
-            method: "GET",
-            credentials: "include",
-          }
-        );
-
-        let transactionsData = null;
-
-        try {
-          transactionsData =
-            await transactionsResponse.json();
-        } catch {
-          transactionsData = null;
-        }
-
-        if (!transactionsResponse.ok) {
-          throw new Error(
-            transactionsData?.detail ||
-              "Unable to load transactions."
-          );
-        }
-
-        setTransactions(
+        const transactionList =
           Array.isArray(transactionsData)
             ? transactionsData
-            : transactionsData?.transactions || []
+            : transactionsData?.transactions || [];
+
+        // ------------------------------------------------
+        // UPDATE UI
+        // ------------------------------------------------
+
+        setBalance(
+          Number(
+            balanceData?.available_balance || 0
+          )
+        );
+
+        setHeldForDelivery(
+          Number(
+            balanceData?.held_for_delivery || 0
+          )
+        );
+
+        setTransactions(transactionList);
+
+        // ------------------------------------------------
+        // UPDATE CACHE
+        // ------------------------------------------------
+
+        setCached(
+          "wallet_balance",
+          balanceData,
+          WALLET_TTL
+        );
+
+        setCached(
+          "wallet_transactions",
+          transactionList,
+          WALLET_TTL
         );
       } catch (error) {
-        console.error("Wallet loading error:", error);
+        if (!mounted) return;
 
-        setWalletError(
-          error?.message ||
-            "Unable to load wallet information."
+        console.error(
+          "Wallet loading error:",
+          error
         );
 
-        setBalance(0);
-        setHeldForDelivery(0);
-        setTransactions([]);
+        // If cached data exists, keep displaying it.
+        // Only show a blocking error when there is
+        // nothing cached to fall back to.
+        if (!hasCache) {
+          setWalletError(
+            error?.response?.data?.detail ||
+              error?.message ||
+              "Unable to load wallet information."
+          );
+
+          setBalance(0);
+          setHeldForDelivery(0);
+          setTransactions([]);
+        }
       } finally {
-        setWalletLoading(false);
+        if (mounted) {
+          setWalletLoading(false);
+        }
       }
     };
 
     loadWallet();
-  }, [API_BASE_URL]);
+
+    return () => {
+      mounted = false;
+    };
+  }, []);
 
   // ================= HELPERS =================
 
@@ -264,7 +295,6 @@ function Dashboard() {
 
       </header>
 
-
       {/* ================= MAIN ================= */}
 
       <main className="dashboard-main">
@@ -285,7 +315,6 @@ function Dashboard() {
 
           </div>
 
-
           <strong className="dashboard-balance-amount">
 
             {walletLoading
@@ -293,7 +322,6 @@ function Dashboard() {
               : formatAmount(balance)}
 
           </strong>
-
 
           <div className="dashboard-held">
 
@@ -313,7 +341,6 @@ function Dashboard() {
 
             </div>
 
-
             <p>
               Funds reserved for active deliveries.
             </p>
@@ -321,7 +348,6 @@ function Dashboard() {
           </div>
 
         </section>
-
 
         {/* ================= WALLET ERROR ================= */}
 
@@ -335,7 +361,6 @@ function Dashboard() {
           </div>
 
         )}
-
 
         {/* ================= ACTIONS ================= */}
 
@@ -351,7 +376,6 @@ function Dashboard() {
               +
             </span>
 
-
             <div>
 
               <strong>
@@ -364,13 +388,11 @@ function Dashboard() {
 
             </div>
 
-
             <span className="dashboard-action-arrow">
               →
             </span>
 
           </button>
-
 
           <button
             type="button"
@@ -381,7 +403,6 @@ function Dashboard() {
             <span className="dashboard-action-icon">
               ↗
             </span>
-
 
             <div>
 
@@ -395,7 +416,6 @@ function Dashboard() {
 
             </div>
 
-
             <span className="dashboard-action-arrow">
               →
             </span>
@@ -403,7 +423,6 @@ function Dashboard() {
           </button>
 
         </section>
-
 
         {/* ================= TRANSACTIONS ================= */}
 
@@ -424,7 +443,6 @@ function Dashboard() {
             </div>
 
           </div>
-
 
           {walletLoading ? (
 
@@ -484,11 +502,8 @@ function Dashboard() {
                   >
 
                     <div className="dashboard-transaction-icon">
-
                       {details.icon}
-
                     </div>
-
 
                     <div className="dashboard-transaction-info">
 
@@ -503,7 +518,6 @@ function Dashboard() {
                       </span>
 
                     </div>
-
 
                     <div className="dashboard-transaction-amount">
 
@@ -525,7 +539,6 @@ function Dashboard() {
 
                       </strong>
 
-
                       <span>
                         {formatStatus(
                           transaction?.status
@@ -546,7 +559,6 @@ function Dashboard() {
         </section>
 
       </main>
-
 
       {/* ================= BOTTOM NAVIGATION ================= */}
 
@@ -581,7 +593,6 @@ function Dashboard() {
           </span>
 
         </button>
-
 
         <button
           type="button"
@@ -619,7 +630,6 @@ function Dashboard() {
 
         </button>
 
-
         <button
           type="button"
           className="bottom-nav-item"
@@ -651,7 +661,6 @@ function Dashboard() {
           </span>
 
         </button>
-
 
         <button
           type="button"
