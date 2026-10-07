@@ -1,13 +1,12 @@
 import axios from "axios";
 
 export const api = axios.create({
-  baseURL: "http://localhost:8000/api/v1.0/",
+  baseURL: `${import.meta.env.VITE_API_URL}/`,
   withCredentials: true,
 });
 
 api.interceptors.response.use(
   (response) => response,
-
   (error) => {
     const status = error?.response?.status;
     const detail = String(error?.response?.data?.detail || "").toLowerCase();
