@@ -83,7 +83,7 @@ requests==2.34.2
 rsa==4.9.1
 s3transfer==0.19.0
 six==1.17.0
-SQLAlchemy==2.0.50
+SQLAlchemy[asyncio]==2.0.50
 sqlmodel==0.0.38
 starlette==1.2.1
 typing-inspection==0.4.2
