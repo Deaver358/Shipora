@@ -124,8 +124,8 @@ async def refresh_access_token(
         key="access_token",
         value=new_access_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+        samesite="none",
         path="/",
     )
 
@@ -259,10 +259,9 @@ async def log_in(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+        samesite="none",
         path="/",
-        domain="localhost",
         max_age=max_age,
     )
 
@@ -270,8 +269,8 @@ async def log_in(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+        samesite="none",
         path="/",
     )
 
@@ -371,8 +370,8 @@ async def admin_login(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+        samesite="none",
         path="/",
     )
 
@@ -477,10 +476,9 @@ async def auth_google(
         key="refresh_token",
         value=refresh_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+        samesite="none",
         path="/",
-        domain="localhost",
         max_age=max_age,
     )
 
@@ -488,8 +486,8 @@ async def auth_google(
         key="access_token",
         value=access_token,
         httponly=True,
-        secure=False,
-        samesite="lax",
+        secure=True,
+        samesite="none",
         path="/",
     )
 
