@@ -140,14 +140,36 @@ function Signup() {
       });
 
       setAcceptedTerms(false);
-
     } catch (signupError) {
       console.error("Signup error:", signupError);
 
-      setError(
-        signupError.message ||
-          "We couldn't create your account. Please try again."
+      const status = signupError?.response?.status;
+      const responseData = signupError?.response?.data;
+
+      const detail = String(
+        responseData?.detail ||
+        responseData?.message ||
+        ""
       );
+
+      if (
+        status === 409 ||
+        /already exists|already registered|email.*taken|duplicate/i.test(detail)
+      ) {
+        setError(
+          "An account with this email already exists. Please sign in instead."
+        );
+      } else if (status === 401) {
+        setError(
+          detail ||
+          "Your session could not be verified. Please try again."
+        );
+      } else {
+        setError(
+          detail ||
+          "We couldn't create your account. Please try again."
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -480,7 +502,7 @@ function Signup() {
               : "Create Account"}
 
             {!loading && (
-              <span>→</span>
+              <span>â†’</span>
             )}
 
           </button>
