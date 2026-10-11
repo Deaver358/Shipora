@@ -1,4 +1,4 @@
-from contextlib import asynccontextmanager
+﻿from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
@@ -70,7 +70,7 @@ async def sync_existing_schema():
         "ALTER TABLE users ADD COLUMN IF NOT EXISTS avatar_url VARCHAR",
         "ALTER TABLE dispatchers ADD COLUMN IF NOT EXISTS account_name VARCHAR",
         "ALTER TABLE both_roles ADD COLUMN IF NOT EXISTS account_name VARCHAR",
-        # wallet_transactions.shipment_id must be nullable now — a WITHDRAWAL row isn't tied to a shipment
+        # wallet_transactions.shipment_id must be nullable now â€” a WITHDRAWAL row isn't tied to a shipment
         "ALTER TABLE wallet_transactions ALTER COLUMN shipment_id DROP NOT NULL",
         # add the new enum value used by wallet withdrawals (no-op if it already exists)
         "ALTER TYPE transactiontype ADD VALUE IF NOT EXISTS 'withdrawal'",
@@ -133,6 +133,7 @@ app.add_middleware(
         "http://127.0.0.1:5173",
         "http://localhost:5174",
         "http://127.0.0.1:5174",
+        "https://shipora-one.vercel.app",
     ],
     allow_credentials=True,
     allow_methods=["*"],
@@ -165,3 +166,4 @@ app.include_router(
 @app.get("/health")
 async def health():
     return {"status": "ok", "service": "shipora", "version": version}
+
