@@ -22,3 +22,5 @@ itsdangerous
 greenlet==3.5.1
 
 PyJWT
+
+user-agents
