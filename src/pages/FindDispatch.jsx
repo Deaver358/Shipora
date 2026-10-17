@@ -366,7 +366,7 @@ function FindDispatch() {
                       <div className="dispatcher-name-row">
                         <h3>{getDispatcherName(dispatcher)}</h3>
 
-                        {dispatcher.verified && (
+                        {(dispatcher.dispatcher_verified ?? dispatcher.verified) && (
                           <span className="verified">
                             ✓ Verified
                           </span>

@@ -20,48 +20,33 @@ function ForgotPassword() {
   const handleSubmit = async (event) => {
     event.preventDefault();
 
-    if (!email.trim()) {
+    const cleanEmail = email.trim();
+
+    if (!cleanEmail || loading) {
       return;
     }
 
     setLoading(true);
 
     try {
-        const response = await api.post(
-            `auth/reset_password/${email}`
-        );
-
-        console.log(response.data);
-
-        // Success
-        // show success message / move to verification screen
+      // The API answers the same way whether or not the account exists
+      await api.post(
+        `auth/reset_password/${encodeURIComponent(cleanEmail)}`
+      );
     } catch (error) {
       console.error(
-            "Password reset error:",
-            error.response?.data || error.message
-        );
-
-        // Show error to user
+        "Password reset error:",
+        error.response?.data || error.message
+      );
     } finally {
-        // Runs on both success and failure
-        setLoading(false);
-    }
-
-    /*
-     * Frontend demonstration only.
-     *
-     * The actual password-reset email will be connected
-     * to the FastAPI backend later.
-     */
-    setTimeout(() => {
       setLoading(false);
 
       setAuthModal({
         open: true,
         type: "passwordResetSent",
-        email: email.trim(),
+        email: cleanEmail,
       });
-    }, 1200);
+    }
   };
 
   const handleModalClose = () => {

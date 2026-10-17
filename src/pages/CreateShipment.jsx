@@ -2,9 +2,9 @@ import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { api } from "../interceptors/api";
 import "../index.css";
+import { API_BASE_URL as CONFIG_API_BASE_URL } from "../config";
 
-const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1.0";
+const API_URL = CONFIG_API_BASE_URL;
 
 function CreateShipment() {
   const navigate = useNavigate();
@@ -28,7 +28,7 @@ function CreateShipment() {
   const [creating, setCreating] = useState(false);
   const [paying, setPaying] = useState(false);
   const [error, setError] = useState("");
-  const [createdShipment, setCreatedShipment] = useState(null);
+  const [, setCreatedShipment] = useState(null);
 
   useEffect(() => {
     const urls = form.media.map((file) => ({
@@ -95,6 +95,39 @@ function CreateShipment() {
       reader.readAsDataURL(file);
     });
 
+  // Upload to file storage and keep only the URL on the shipment. Falls back
+  // to an inline image only when storage isn't configured on the server.
+  const uploadMedia = async (file) => {
+    try {
+      const body = new FormData();
+      body.append("file", file);
+
+      const { data } = await api.post("uploads/shipment-media", body);
+
+      if (data?.url) {
+        return data.url;
+      }
+    } catch (uploadError) {
+      const status = uploadError?.response?.status;
+
+      if (status !== 503) {
+        throw new Error(
+          uploadError?.response?.data?.detail ||
+            `Could not upload ${file.name}. Please try again.`,
+          { cause: uploadError }
+        );
+      }
+    }
+
+    if (!file.type.startsWith("image/") || file.size > 2 * 1024 * 1024) {
+      throw new Error(
+        "Media storage is unavailable right now. Please attach a photo smaller than 2 MB."
+      );
+    }
+
+    return fileToDataUrl(file);
+  };
+
   const handleSubmit = (event) => {
     event.preventDefault();
     setError("");
@@ -115,7 +148,7 @@ const createAndPayShipment = async () => {
     }
 
     const media = await Promise.all(
-      form.media.map((file) => fileToDataUrl(file))
+      form.media.map((file) => uploadMedia(file))
     );
 
     const createPayload = {

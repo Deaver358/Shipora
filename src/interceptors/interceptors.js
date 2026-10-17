@@ -1,79 +1,66 @@
-import { api } from "./api";
-import { clearAccessToken, getAccessToken, setAccessToken } from "../dep/token";
+/*
+ * Session handling for every backend call.
+ *
+ * - Axios calls (`api` from ./api) refresh the access token automatically;
+ *   that logic lives in ./api.jsx.
+ * - Several pages call the backend with window.fetch. This wrapper gives
+ *   them the same behaviour: on an expired/missing access token it refreshes
+ *   the session once (using the httpOnly refresh cookie) and retries.
+ */
+import {
+  isAuthRequest,
+  isRefreshableAuthError,
+  redirectToLogin,
+  refreshSession,
+} from "./api";
+import { API_BASE_URL } from "../config";
 
+if (typeof window !== "undefined" && !window.__shiporaFetchPatched) {
+  window.__shiporaFetchPatched = true;
 
+  const originalFetch = window.fetch.bind(window);
 
-let isRefreshing = false;
-let failedQueue = [];
+  window.fetch = async (input, init = {}) => {
+    const url = typeof input === "string" ? input : input?.url || "";
+    const isApiCall = url.startsWith(API_BASE_URL);
 
+    // Our backend relies on cookies — always send them on API calls.
+    const requestInit =
+      isApiCall && !init.credentials
+        ? { ...init, credentials: "include" }
+        : init;
 
-const processQueue = (error) => {
-    failedQueue.forEach(prom => {
-        if (error) {
-            prom.reject(error);
-        }else {
-            prom.resolve();
-        }
-    });
-    failedQueue = [];
-}
+    const response = await originalFetch(input, requestInit);
 
-api.interceptors.request.use((config) => {
-    config.withCredentials = true;
-    return config;
-})
-
-api.interceptors.response.use(
-    (response) => response,
-    async (error) => {
-        const originalRequest = error.config
-
-        if (originalRequest?.url?.includes("/auth/signin")){
-            return Promise.reject(error);
-        }
-        if (originalRequest?.url?.includes("/auth/reset_password")){
-            return Promise.reject(error);
-        }
-        if (error.response?.status === 400) {
-            return Promise.reject(error)
-        }
-        if (
-            originalRequest?._retry ||
-            originalRequest?.skipAuth ||
-            originalRequest?.url?.includes("/auth/logout") ||
-            originalRequest?.url?.includes("/auth/refresh_access")
-        ) {
-            return Promise.reject(error);
-        }
-        if (isRefreshing) {
-            return new Promise((resolve, reject) => {
-                failedQueue.push({resolve, reject})
-            }).then(() => {
-                return api(originalRequest);
-            })
-        }
-        if (error.response?.status === 401 || originalRequest?._retry) {
-            return Promise.reject(error);
-        }
-        originalRequest._retry = true;
-        isRefreshing = true;
-
-        try {
-            const res = await api.post(
-                "/auth/refresh_access",
-                {},
-                { withCredentials: true }
-            )
-            processQueue(null);
-
-            return api(originalRequest);
-        } catch (err){
-
-            processQueue(err);
-            clearAccessToken();
-            return Promise.reject(err);
-        } finally {
-            isRefreshing = false;
-        }
+    if (
+      !isApiCall ||
+      isAuthRequest(url) ||
+      (response.status !== 401 && response.status !== 403)
+    ) {
+      return response;
     }
-);
+
+    let detail;
+
+    try {
+      const body = await response.clone().json();
+      detail = body?.detail;
+    } catch {
+      detail = "";
+    }
+
+    if (!isRefreshableAuthError(response.status, detail)) {
+      return response;
+    }
+
+    try {
+      await refreshSession();
+    } catch {
+      redirectToLogin();
+      return response;
+    }
+
+    // Request bodies we send (JSON strings / FormData) can be re-sent safely.
+    return originalFetch(input, requestInit);
+  };
+}

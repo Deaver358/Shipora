@@ -3,12 +3,9 @@ from typing import Callable, Any
 from fastapi.responses import JSONResponse
 import logging
 
-logging.basicConfig(
-    level=logging.ERROR,
-    format="%(asctime)s %(levelname)s %(message)s",
-    handlers=[logging.FileHandler("errors.log")],
-)
-
+# Logging is configured once in app/utils/logging_config.py (stdout, so the
+# hosting provider's log viewer captures it). Writing to a local errors.log
+# file is lost on every redeploy of an ephemeral container.
 logger = logging.getLogger(__name__)
 
 

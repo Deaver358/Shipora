@@ -71,21 +71,6 @@ function ShipmentDetails() {
     )}`;
   };
 
-  const formatDate = (value) => {
-    if (!value) return "—";
-
-    try {
-      return new Date(value).toLocaleString(undefined, {
-        year: "numeric",
-        month: "short",
-        day: "numeric",
-        hour: "numeric",
-        minute: "2-digit",
-      });
-    } catch {
-      return "—";
-    }
-  };
 
   const handleConfirmDelivery = async () => {
     if (actionLoading) return;

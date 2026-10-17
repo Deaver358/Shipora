@@ -3,7 +3,7 @@ import uuid
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, Depends, status, HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, or_
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.session_config import session
@@ -145,7 +145,12 @@ async def list_availability(
     session: AsyncSession = Depends(session),
 ):
     q = select(DispatchAvailability).where(
-        DispatchAvailability.is_active == True
+        DispatchAvailability.is_active == True,
+        # hide posts whose availability window has already ended
+        or_(
+            DispatchAvailability.available_until.is_(None),
+            DispatchAvailability.available_until >= datetime.now(timezone.utc),
+        ),
     )
 
     if state:

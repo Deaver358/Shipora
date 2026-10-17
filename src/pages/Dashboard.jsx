@@ -214,6 +214,13 @@ function Dashboard() {
           direction: "debit",
         };
 
+      case "CUSTOMER_PAYMENT":
+        return {
+          title: "Customer Payment",
+          icon: "+",
+          direction: "credit",
+        };
+
       case "ESCROW_RELEASE":
         return {
           title: "Delivery Payment",

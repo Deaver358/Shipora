@@ -53,17 +53,9 @@ export function UserProvider({ children }) {
         try {
             setError("");
 
-            const res = await api.get("/user/current_user", {
+            const res = await api.get("auth/current_user", {
                 withCredentials: true,
             });
-
-            console.log(
-                "========== SHIPORA CURRENT USER =========="
-            );
-            console.log(res.data);
-            console.log(
-                "==========================================="
-            );
 
             setCurrentUser(res.data);
         } catch (err) {
@@ -123,6 +115,7 @@ export function UserProvider({ children }) {
                 setCurrentUser,
                 fetchUser,
                 loading,
+                error,
             }}
         >
             <div>

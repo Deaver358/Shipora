@@ -1,8 +1,8 @@
 import { useEffect, useMemo, useState } from "react";
 import "../index.css";
+import { API_BASE_URL as CONFIG_API_BASE_URL } from "../config";
 
-const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:8000/api/v1.0";
+const API_URL = CONFIG_API_BASE_URL;
 
 function getAuthHeaders() {
   const token =
@@ -303,6 +303,7 @@ export default function AdminKYC() {
 
     try {
       const response = await fetch(`${API_URL}/admin/kyc`, {
+        credentials: "include",
         headers: getAuthHeaders(),
       });
 
@@ -459,6 +460,7 @@ export default function AdminKYC() {
 
       const response = await fetch(url, {
         method: "POST",
+        credentials: "include",
         headers: getAuthHeaders(),
       });
 

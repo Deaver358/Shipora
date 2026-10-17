@@ -1,6 +1,7 @@
+import logging
 import uuid
 
-from sqlalchemy import select, func
+from sqlalchemy import select, func, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
@@ -12,8 +13,55 @@ from app.models.wallet_transaction_model import (
 )
 from app.utils import paystack
 
+logger = logging.getLogger("shipora.wallet")
+
+# Paystack transaction statuses that will never turn into a successful charge
+PAYSTACK_FINAL_FAILURES = {"failed", "reversed"}
+
+
+async def lock_wallet(user_id, session: AsyncSession) -> None:
+    """
+    Serialise balance-changing operations for one user (withdrawals and
+    wallet payments) so two concurrent requests can't both spend the same
+    money. The lock is released automatically at COMMIT/ROLLBACK.
+    """
+    await session.execute(
+        text("SELECT pg_advisory_xact_lock(hashtext(:key))"),
+        {"key": f"shipora-wallet:{user_id}"},
+    )
+
 
 class WalletService:
+
+    # =========================================================
+    # HELPERS
+    # =========================================================
+
+    async def _successful_hold(self, shipment_id, session: AsyncSession):
+        result = await session.execute(
+            select(WalletTransaction)
+            .where(
+                WalletTransaction.shipment_id == shipment_id,
+                WalletTransaction.type == TransactionType.ESCROW_HOLD,
+                WalletTransaction.status == TransactionStatus.SUCCESS,
+            )
+            .order_by(WalletTransaction.created_at.asc())
+        )
+        return result.scalars().first()
+
+    async def _existing(self, shipment_id, type_: TransactionType, session: AsyncSession):
+        result = await session.execute(
+            select(WalletTransaction).where(
+                WalletTransaction.shipment_id == shipment_id,
+                WalletTransaction.type == type_,
+                WalletTransaction.status == TransactionStatus.SUCCESS,
+            )
+        )
+        return result.scalars().first()
+
+    # =========================================================
+    # CUSTOMER PAYS FOR A SHIPMENT VIA PAYSTACK CHECKOUT
+    # =========================================================
 
     async def initiate_hold(
         self,
@@ -22,23 +70,20 @@ class WalletService:
         session: AsyncSession,
         callback_url: str | None = None,
     ) -> str:
-        reference = f"SHP-HOLD-{shipment.shipment_id}"
-
-        existing = await session.execute(
-            select(WalletTransaction).where(
-                WalletTransaction.paystack_reference == reference
-            )
-        )
-
-        if existing.scalar_one_or_none():
+        if shipment.payment_status == PaymentStatus.HELD or await self._successful_hold(shipment.shipment_id, session):
             raise HTTPException(
                 status.HTTP_409_CONFLICT,
-                "A payment has already been initialized for this shipment.",
+                "This shipment has already been paid for.",
             )
+
+        # A fresh reference per attempt: Paystack rejects re-used references,
+        # so a customer who abandoned checkout can simply try again.
+        reference = f"SHP-HOLD-{shipment.shipment_id}-{uuid.uuid4().hex[:8]}"
+        amount = shipment.delivery_fee + shipment.service_fee
 
         checkout = await paystack.initialize_transaction(
             email=payer_email,
-            amount_kobo=shipment.delivery_fee + shipment.service_fee,
+            amount_kobo=amount,
             reference=reference,
             callback_url=callback_url,
         )
@@ -47,7 +92,7 @@ class WalletService:
             shipment_id=shipment.shipment_id,
             user_id=shipment.vendor_id,
             type=TransactionType.ESCROW_HOLD,
-            amount=shipment.delivery_fee + shipment.service_fee,
+            amount=amount,
             status=TransactionStatus.PENDING,
             paystack_reference=reference,
         )
@@ -61,43 +106,73 @@ class WalletService:
         self,
         shipment: Shipment,
         session: AsyncSession,
+        reference: str | None = None,
     ) -> bool:
         if shipment.payment_status == PaymentStatus.HELD:
             return True
 
-        reference = f"SHP-HOLD-{shipment.shipment_id}"
-
-        result = await session.execute(
-            select(WalletTransaction).where(
-                WalletTransaction.paystack_reference == reference
-            )
+        query = select(WalletTransaction).where(
+            WalletTransaction.shipment_id == shipment.shipment_id,
+            WalletTransaction.type == TransactionType.ESCROW_HOLD,
+            WalletTransaction.status == TransactionStatus.PENDING,
         )
+        if reference:
+            query = query.where(WalletTransaction.paystack_reference == reference)
 
-        txn = result.scalar_one_or_none()
+        pending = (await session.execute(query.order_by(WalletTransaction.created_at.desc()))).scalars().all()
 
-        if not txn:
-            return False
-
-        verified = await paystack.verify_transaction(reference)
-
-        if verified.get("status") != "success":
+        if not pending:
             return False
 
         expected = shipment.delivery_fee + shipment.service_fee
 
-        if int(verified.get("amount", 0)) != expected:
-            raise HTTPException(
-                status.HTTP_400_BAD_REQUEST,
-                "Paystack amount does not match shipment total.",
+        for txn in pending:
+            try:
+                verified = await paystack.verify_transaction(txn.paystack_reference)
+            except paystack.PaystackError as exc:
+                logger.warning("Could not verify %s: %s", txn.paystack_reference, exc)
+                continue
+
+            paystack_status = str(verified.get("status") or "").lower()
+
+            if paystack_status in PAYSTACK_FINAL_FAILURES:
+                txn.status = TransactionStatus.FAILED
+                session.add(txn)
+                continue
+
+            if paystack_status != "success":
+                continue
+
+            if int(verified.get("amount", 0)) != expected:
+                logger.error(
+                    "Amount mismatch for %s: paid %s, expected %s",
+                    txn.paystack_reference, verified.get("amount"), expected,
+                )
+                raise HTTPException(
+                    status.HTTP_400_BAD_REQUEST,
+                    "Paystack amount does not match shipment total.",
+                )
+
+            txn.status = TransactionStatus.SUCCESS
+            shipment.payment_status = PaymentStatus.HELD
+
+            # The customer's money funds the escrow, not the vendor's balance.
+            session.add(
+                WalletTransaction(
+                    shipment_id=shipment.shipment_id,
+                    user_id=shipment.vendor_id,
+                    type=TransactionType.CUSTOMER_PAYMENT,
+                    amount=expected,
+                    status=TransactionStatus.SUCCESS,
+                    paystack_reference=f"SHP-CUSTPAY-{shipment.shipment_id}",
+                )
             )
+            session.add_all([txn, shipment])
+            await session.commit()
+            return True
 
-        txn.status = TransactionStatus.SUCCESS
-        shipment.payment_status = PaymentStatus.HELD
-
-        session.add_all([txn, shipment])
         await session.commit()
-
-        return True
+        return False
 
     # =========================================================
     # PAY FOR SHIPMENT FROM VENDOR'S SHIPORA BALANCE
@@ -111,6 +186,14 @@ class WalletService:
 
         if shipment.payment_status == PaymentStatus.HELD:
             return shipment
+
+        await lock_wallet(shipment.vendor_id, session)
+
+        if await self._successful_hold(shipment.shipment_id, session):
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This shipment has already been paid for.",
+            )
 
         total = shipment.delivery_fee + shipment.service_fee
 
@@ -140,6 +223,8 @@ class WalletService:
         session.add(txn)
 
         shipment.payment_status = PaymentStatus.HELD
+        # The vendor funded this shipment from their wallet.
+        shipment.payment_by = "vendor"
 
         session.add(shipment)
 
@@ -197,9 +282,9 @@ class WalletService:
     ) -> WalletTransaction:
 
         result = await session.execute(
-            select(WalletTransaction).where(
-                WalletTransaction.paystack_reference == reference
-            )
+            select(WalletTransaction)
+            .where(WalletTransaction.paystack_reference == reference)
+            .with_for_update()
         )
 
         txn = result.scalar_one_or_none()
@@ -214,8 +299,9 @@ class WalletService:
             return txn
 
         verified = await paystack.verify_transaction(reference)
+        paystack_status = str(verified.get("status") or "").lower()
 
-        if verified.get("status") != "success":
+        if paystack_status in PAYSTACK_FINAL_FAILURES:
             txn.status = TransactionStatus.FAILED
 
             session.add(txn)
@@ -226,7 +312,16 @@ class WalletService:
                 "This payment was not successful.",
             )
 
+        if paystack_status != "success":
+            # abandoned / ongoing / pending: the customer may still complete it
+            await session.rollback()
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This payment has not been completed yet.",
+            )
+
         if int(verified.get("amount", 0)) != txn.amount:
+            await session.rollback()
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
                 "Paystack amount does not match the top-up request.",
@@ -256,6 +351,15 @@ class WalletService:
 
         reference = f"SHP-RELEASE-{shipment.shipment_id}"
 
+        existing = await session.execute(
+            select(WalletTransaction).where(WalletTransaction.paystack_reference == reference)
+        )
+        if existing.scalar_one_or_none():
+            shipment.payment_status = PaymentStatus.RELEASED
+            session.add(shipment)
+            await session.commit()
+            return
+
         payout_amount = (
             shipment.delivery_fee
             - shipment.platform_commission
@@ -270,9 +374,12 @@ class WalletService:
             paystack_reference=reference,
         )
 
+        # Informational ledger line (not part of the balance maths): the
+        # commission is withheld from the dispatcher's payout, so it belongs
+        # on the dispatcher's history — see WalletTransaction.user_id.
         commission_txn = WalletTransaction(
             shipment_id=shipment.shipment_id,
-            user_id=shipment.vendor_id,
+            user_id=shipment.dispatcher_id,
             type=TransactionType.PLATFORM_COMMISSION,
             amount=shipment.platform_commission,
             status=TransactionStatus.SUCCESS,
@@ -301,23 +408,20 @@ class WalletService:
         session: AsyncSession,
         fee_kobo: int,
     ):
+        """
+        Refund the vendor's Shipora balance minus the cancellation fee, and
+        credit the fee to the assigned dispatcher. Ledger-only: money stays
+        inside Shipora (see WalletTransaction docstring).
+        """
 
         if shipment.payment_status != PaymentStatus.HELD:
             shipment.payment_status = PaymentStatus.REFUNDED
-
+            session.add(shipment)
             await session.commit()
 
             return
 
-        hold_ref = f"SHP-HOLD-{shipment.shipment_id}"
-
-        hold_result = await session.execute(
-            select(WalletTransaction).where(
-                WalletTransaction.paystack_reference == hold_ref
-            )
-        )
-
-        hold = hold_result.scalar_one_or_none()
+        hold = await self._successful_hold(shipment.shipment_id, session)
 
         if not hold:
             raise HTTPException(
@@ -325,37 +429,32 @@ class WalletService:
                 "Original payment ledger entry not found.",
             )
 
-        refund_amount = max(
-            0,
-            hold.amount - fee_kobo,
-        )
+        fee_kobo = max(0, min(fee_kobo, hold.amount))
+        refund_amount = hold.amount - fee_kobo
 
-        await paystack.refund_transaction(
-            hold_ref,
-            refund_amount,
-        )
-
-        session.add(
-            WalletTransaction(
-                shipment_id=shipment.shipment_id,
-                user_id=shipment.vendor_id,
-                type=TransactionType.REFUND,
-                amount=refund_amount,
-                status=TransactionStatus.SUCCESS,
-                paystack_reference=f"SHP-REFUND-{shipment.shipment_id}",
+        if refund_amount > 0:
+            session.add(
+                WalletTransaction(
+                    shipment_id=shipment.shipment_id,
+                    user_id=shipment.vendor_id,
+                    type=TransactionType.REFUND,
+                    amount=refund_amount,
+                    status=TransactionStatus.SUCCESS,
+                    paystack_reference=f"SHP-REFUND-{shipment.shipment_id}",
+                )
             )
-        )
 
-        session.add(
-            WalletTransaction(
-                shipment_id=shipment.shipment_id,
-                user_id=shipment.dispatcher_id,
-                type=TransactionType.ESCROW_RELEASE,
-                amount=fee_kobo,
-                status=TransactionStatus.SUCCESS,
-                paystack_reference=f"SHP-CANCEL-FEE-{shipment.shipment_id}",
+        if fee_kobo > 0 and shipment.dispatcher_id:
+            session.add(
+                WalletTransaction(
+                    shipment_id=shipment.shipment_id,
+                    user_id=shipment.dispatcher_id,
+                    type=TransactionType.ESCROW_RELEASE,
+                    amount=fee_kobo,
+                    status=TransactionStatus.SUCCESS,
+                    paystack_reference=f"SHP-CANCEL-FEE-{shipment.shipment_id}",
+                )
             )
-        )
 
         shipment.payment_status = PaymentStatus.REFUNDED
 
@@ -373,22 +472,21 @@ class WalletService:
         session: AsyncSession,
         reason: str = "Shipora refund",
     ):
+        """
+        Return the escrowed amount to the vendor's Shipora balance. The
+        vendor can spend it on another shipment or withdraw it to their bank.
+
+        This used to call Paystack's refund API, which fails for shipments
+        paid from the wallet (Paystack never saw that money) and would
+        double-refund card payments that are also credited to the wallet.
+        """
 
         if shipment.payment_status == PaymentStatus.REFUNDED:
             return
 
-        reference = f"SHP-HOLD-{shipment.shipment_id}"
+        hold = await self._successful_hold(shipment.shipment_id, session)
 
-        result = await session.execute(
-            select(WalletTransaction).where(
-                WalletTransaction.paystack_reference == reference,
-                WalletTransaction.type == TransactionType.ESCROW_HOLD,
-            )
-        )
-
-        hold = result.scalar_one_or_none()
-
-        if not hold or hold.status != TransactionStatus.SUCCESS:
+        if not hold or await self._existing(shipment.shipment_id, TransactionType.REFUND, session):
             shipment.payment_status = PaymentStatus.REFUNDED
 
             session.add(shipment)
@@ -396,11 +494,6 @@ class WalletService:
             await session.commit()
 
             return
-
-        await paystack.refund_transaction(
-            reference,
-            hold.amount,
-        )
 
         refund_txn = WalletTransaction(
             shipment_id=shipment.shipment_id,
@@ -421,6 +514,7 @@ class WalletService:
         )
 
         await session.commit()
+        logger.info("Refunded %s kobo to vendor for shipment %s (%s)", hold.amount, shipment.shipment_id, reason)
 
     # =========================================================
     # WALLET BALANCE
@@ -446,7 +540,12 @@ class WalletService:
         """
 
         result = await session.execute(
-            select(WalletTransaction).where(
+            select(
+                WalletTransaction.type,
+                WalletTransaction.status,
+                func.coalesce(func.sum(WalletTransaction.amount), 0),
+            )
+            .where(
                 WalletTransaction.user_id == user_id,
                 WalletTransaction.status.in_(
                     [
@@ -455,25 +554,26 @@ class WalletService:
                     ]
                 ),
             )
+            .group_by(WalletTransaction.type, WalletTransaction.status)
         )
 
-        transactions = result.scalars().all()
+        sums = {(row[0], row[1]): int(row[2] or 0) for row in result.all()}
 
         def total(
             type_: TransactionType,
             statuses: list[TransactionStatus],
         ) -> int:
-            return sum(
-                transaction.amount
-                for transaction in transactions
-                if transaction.type == type_
-                and transaction.status in statuses
-            )
+            return sum(sums.get((type_, s), 0) for s in statuses)
 
         success = [TransactionStatus.SUCCESS]
 
         total_topped_up = total(
             TransactionType.TOPUP,
+            success,
+        )
+
+        total_customer_payments = total(
+            TransactionType.CUSTOMER_PAYMENT,
             success,
         )
 
@@ -533,6 +633,7 @@ class WalletService:
 
         credits = (
             total_topped_up
+            + total_customer_payments
             + total_earned
             + total_refunded
         )
@@ -618,6 +719,24 @@ class WalletService:
                 "Add a bank account to your profile before withdrawing.",
             )
 
+        recipient_code = profile.paystack_recipient_code
+
+        if not recipient_code:
+            recipient_code = await paystack.create_transfer_recipient(
+                name=profile.account_name or profile.full_name,
+                account_number=profile.account_number,
+                bank_code=profile.bank_code,
+            )
+
+            profile.row.paystack_recipient_code = recipient_code
+
+            session.add(profile.row)
+
+            await session.commit()
+
+        # ---- reserve the money first (inside a per-user lock) ----------
+        await lock_wallet(user_id, session)
+
         balance = await self.get_balance(
             user_id,
             session,
@@ -629,38 +748,8 @@ class WalletService:
                 "Withdrawal amount exceeds available balance.",
             )
 
-        recipient_code = profile.paystack_recipient_code
-
-        if not recipient_code:
-            recipient_code = await paystack.create_transfer_recipient(
-                name=profile.full_name,
-                account_number=profile.account_number,
-                bank_code=profile.bank_code,
-            )
-
-            profile.row.paystack_recipient_code = recipient_code
-
-            session.add(profile.row)
-
-            await session.commit()
-
         reference = (
             f"SHP-WITHDRAW-{uuid.uuid4().hex[:12]}"
-        )
-
-        transfer = await paystack.initiate_transfer(
-            recipient_code=recipient_code,
-            amount_kobo=amount_kobo,
-            reason="Shipora wallet withdrawal",
-            reference=reference,
-        )
-
-        status_value = (
-            TransactionStatus.SUCCESS
-            if transfer.get("status") == "success"
-            else TransactionStatus.PENDING
-            if transfer.get("status") == "pending"
-            else TransactionStatus.FAILED
         )
 
         txn = WalletTransaction(
@@ -668,19 +757,88 @@ class WalletService:
             shipment_id=None,
             type=TransactionType.WITHDRAWAL,
             amount=amount_kobo,
-            status=status_value,
+            status=TransactionStatus.PENDING,
             paystack_reference=reference,
         )
+
+        session.add(txn)
+
+        # PENDING withdrawals already count against the balance, so once this
+        # commits a second concurrent request can't spend the same money.
+        await session.commit()
+
+        # ---- then move the money --------------------------------------
+        try:
+            transfer = await paystack.initiate_transfer(
+                recipient_code=recipient_code,
+                amount_kobo=amount_kobo,
+                reason="Shipora wallet withdrawal",
+                reference=reference,
+            )
+        except paystack.PaystackError as exc:
+            if exc.definitive:
+                txn.status = TransactionStatus.FAILED
+                session.add(txn)
+                await session.commit()
+                raise HTTPException(
+                    status.HTTP_502_BAD_GATEWAY,
+                    f"Withdrawal could not be initiated: {exc}",
+                )
+            # Outcome unknown (timeout): keep it PENDING. The Paystack
+            # transfer webhook settles it as success / failed.
+            logger.warning("Withdrawal %s outcome unknown: %s", reference, exc)
+            await session.refresh(txn)
+            return txn
+
+        transfer_status = str(transfer.get("status") or "").lower()
+
+        if transfer_status == "success":
+            txn.status = TransactionStatus.SUCCESS
+        elif transfer_status in ("failed", "reversed", "abandoned", "rejected"):
+            txn.status = TransactionStatus.FAILED
+        # "pending" / "otp" / "queued" / "processing" stay PENDING until the webhook
 
         session.add(txn)
 
         await session.commit()
         await session.refresh(txn)
 
-        if status_value == TransactionStatus.FAILED:
+        if txn.status == TransactionStatus.FAILED:
             raise HTTPException(
                 status.HTTP_502_BAD_GATEWAY,
                 "Withdrawal could not be initiated. Try again shortly.",
             )
+
+        return txn
+
+    async def settle_withdrawal(
+        self,
+        reference: str,
+        succeeded: bool,
+        session: AsyncSession,
+    ) -> WalletTransaction | None:
+        """Called from Paystack transfer.success / transfer.failed / transfer.reversed webhooks."""
+        result = await session.execute(
+            select(WalletTransaction)
+            .where(
+                WalletTransaction.paystack_reference == reference,
+                WalletTransaction.type == TransactionType.WITHDRAWAL,
+            )
+            .with_for_update()
+        )
+        txn = result.scalar_one_or_none()
+
+        if not txn:
+            return None
+
+        new_status = TransactionStatus.SUCCESS if succeeded else TransactionStatus.FAILED
+
+        if txn.status != new_status:
+            txn.status = new_status
+            session.add(txn)
+            await session.commit()
+            await session.refresh(txn)
+        else:
+            await session.commit()
 
         return txn

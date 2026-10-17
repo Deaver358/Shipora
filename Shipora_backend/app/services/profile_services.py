@@ -3,6 +3,7 @@ from datetime import datetime, timezone
 from typing import Optional
 
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
@@ -309,16 +310,23 @@ class ProfileService:
             )
 
         if fullname:
-            row.fullname = fullname
+            row.fullname = fullname.strip()
 
         if phone:
-            row.phone = phone
+            row.phone = phone.strip()
 
         row.updated_at = datetime.now(timezone.utc)
 
         session.add(row)
 
-        await session.commit()
+        try:
+            await session.commit()
+        except IntegrityError:
+            await session.rollback()
+            raise HTTPException(
+                status.HTTP_409_CONFLICT,
+                "This phone number is already used by another account.",
+            )
         await session.refresh(row)
 
         return row
@@ -403,10 +411,12 @@ class ProfileService:
                 bank_code,
             )
 
-        except RuntimeError as exc:
+        except paystack.PaystackError as exc:
+            if not exc.definitive:
+                raise
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
-                str(exc),
+                str(exc) or "Could not verify this account number.",
             )
 
         row.bank_code = bank_code

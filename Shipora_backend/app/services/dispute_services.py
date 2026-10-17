@@ -13,7 +13,12 @@ from app.models.dispute_model import (
 from app.models.shipment_model import Shipment, ShipmentStatus
 from app.models.vendor_model import Vendor
 from app.models.dispatcher_model import Dispatcher
+from app.models.both_roles_model import BothRoles
 from app.models.user_model import User
+
+# NOTE: Shipment.vendor_id / Shipment.dispatcher_id (and therefore
+# Dispute.vendor_id / Dispute.dispatcher_id) hold the *user* UID of each
+# party, not the Vendor / Dispatcher profile primary key.
 
 
 class DisputeService:
@@ -26,13 +31,17 @@ class DisputeService:
         self,
         shipment_id: uuid.UUID,
         session: AsyncSession,
+        lock: bool = False,
     ) -> Shipment:
 
-        result = await session.execute(
-            select(Shipment).where(
-                Shipment.shipment_id == shipment_id
-            )
+        query = select(Shipment).where(
+            Shipment.shipment_id == shipment_id
         )
+
+        if lock:
+            query = query.with_for_update().execution_options(populate_existing=True)
+
+        result = await session.execute(query)
 
         shipment = result.scalar_one_or_none()
 
@@ -50,13 +59,22 @@ class DisputeService:
 
     async def _get_vendor(
         self,
-        vendor_id: uuid.UUID,
+        vendor_user_id: uuid.UUID,
         session: AsyncSession,
     ):
         result = await session.execute(
             select(Vendor).where(
-                Vendor.vendor_id == vendor_id
+                Vendor.user_id == vendor_user_id
             )
+        )
+
+        vendor = result.scalar_one_or_none()
+
+        if vendor:
+            return vendor
+
+        result = await session.execute(
+            select(BothRoles).where(BothRoles.user_id == vendor_user_id)
         )
 
         return result.scalar_one_or_none()
@@ -76,8 +94,17 @@ class DisputeService:
 
         result = await session.execute(
             select(Dispatcher).where(
-                Dispatcher.dispatcher_id == dispatcher_id
+                Dispatcher.user_id == dispatcher_id
             )
+        )
+
+        dispatcher = result.scalar_one_or_none()
+
+        if dispatcher:
+            return dispatcher
+
+        result = await session.execute(
+            select(BothRoles).where(BothRoles.user_id == dispatcher_id)
         )
 
         return result.scalar_one_or_none()
@@ -93,31 +120,8 @@ class DisputeService:
         session: AsyncSession,
     ) -> bool:
 
-        # Vendor / shipment owner
-        vendor_result = await session.execute(
-            select(Vendor).where(
-                Vendor.vendor_id == shipment.vendor_id,
-                Vendor.user_id == user.uid,
-            )
-        )
-
-        if vendor_result.scalar_one_or_none():
-            return True
-
-        # Assigned dispatcher
-        if shipment.dispatcher_id:
-
-            dispatcher_result = await session.execute(
-                select(Dispatcher).where(
-                    Dispatcher.dispatcher_id == shipment.dispatcher_id,
-                    Dispatcher.user_id == user.uid,
-                )
-            )
-
-            if dispatcher_result.scalar_one_or_none():
-                return True
-
-        return False
+        # Vendor / shipment owner, or the assigned dispatcher
+        return user.uid in (shipment.vendor_id, shipment.dispatcher_id)
 
     # =========================================================
     # CREATE DISPUTE
@@ -136,6 +140,7 @@ class DisputeService:
         shipment = await self._get_shipment(
             shipment_id,
             session,
+            lock=True,
         )
 
         # -----------------------------------------------------
@@ -165,6 +170,12 @@ class DisputeService:
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="This shipment can no longer be disputed.",
+            )
+
+        if shipment.status == ShipmentStatus.PENDING_PAYMENT:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="This shipment hasn't been paid for yet — cancel it instead.",
             )
 
         # -----------------------------------------------------
@@ -220,6 +231,8 @@ class DisputeService:
         shipment.dispute_reason = reason
         shipment.dispute_resolution = None
         shipment.dispute_resolved_at = None
+        # Pause automatic payout while the dispute is open
+        shipment.auto_release_at = None
         shipment.updated_at = datetime.now(timezone.utc)
 
         session.add(dispute)
@@ -229,7 +242,28 @@ class DisputeService:
 
         await session.refresh(dispute)
 
-        return dispute
+        from app.services.notification_services import NotificationService
+        from app.models.notification_model import NotificationType
+
+        other_party = (
+            shipment.dispatcher_id
+            if user.uid == shipment.vendor_id
+            else shipment.vendor_id
+        )
+        if other_party:
+            await NotificationService().notify(
+                user_id=other_party,
+                type=NotificationType.DISPUTE,
+                title="Dispute opened",
+                message=(
+                    f"A dispute was opened on shipment {shipment.tracking_number}: "
+                    f"{reason}. Payment is on hold pending admin review."
+                ),
+                session=session,
+                shipment_id=shipment.shipment_id,
+            )
+
+        return await self._build_response(dispute, session)
 
     # =========================================================
     # BUILD RESPONSE
@@ -260,17 +294,13 @@ class DisputeService:
         # Vendor user
         # -----------------------------------------------------
 
-        vendor_user = None
-
-        if vendor:
-
-            vendor_user_result = await session.execute(
-                select(User).where(
-                    User.uid == vendor.user_id
-                )
+        vendor_user_result = await session.execute(
+            select(User).where(
+                User.uid == dispute.vendor_id
             )
+        )
 
-            vendor_user = vendor_user_result.scalar_one_or_none()
+        vendor_user = vendor_user_result.scalar_one_or_none()
 
         # -----------------------------------------------------
         # Dispatcher user
@@ -278,11 +308,11 @@ class DisputeService:
 
         dispatcher_user = None
 
-        if dispatcher:
+        if dispute.dispatcher_id:
 
             dispatcher_user_result = await session.execute(
                 select(User).where(
-                    User.uid == dispatcher.user_id
+                    User.uid == dispute.dispatcher_id
                 )
             )
 
@@ -416,22 +446,6 @@ class DisputeService:
         session: AsyncSession,
     ):
 
-        vendor_result = await session.execute(
-            select(Vendor.vendor_id).where(
-                Vendor.user_id == user.uid
-            )
-        )
-
-        vendor_id = vendor_result.scalar_one_or_none()
-
-        dispatcher_result = await session.execute(
-            select(Dispatcher.dispatcher_id).where(
-                Dispatcher.user_id == user.uid
-            )
-        )
-
-        dispatcher_id = dispatcher_result.scalar_one_or_none()
-
         # -----------------------------------------------------
         # IMPORTANT:
         # These must be OR conditions.
@@ -444,17 +458,9 @@ class DisputeService:
 
         conditions = [
             Dispute.complainant_user_id == user.uid,
+            Dispute.vendor_id == user.uid,
+            Dispute.dispatcher_id == user.uid,
         ]
-
-        if vendor_id:
-            conditions.append(
-                Dispute.vendor_id == vendor_id
-            )
-
-        if dispatcher_id:
-            conditions.append(
-                Dispute.dispatcher_id == dispatcher_id
-            )
 
         result = await session.execute(
             select(Dispute)
@@ -512,40 +518,11 @@ class DisputeService:
 
         if not is_admin:
 
-            allowed = (
-                dispute.complainant_user_id == user.uid
+            allowed = user.uid in (
+                dispute.complainant_user_id,
+                dispute.vendor_id,
+                dispute.dispatcher_id,
             )
-
-            # Vendor
-            if not allowed:
-
-                vendor_result = await session.execute(
-                    select(Vendor).where(
-                        Vendor.vendor_id == dispute.vendor_id,
-                        Vendor.user_id == user.uid,
-                    )
-                )
-
-                allowed = (
-                    vendor_result.scalar_one_or_none()
-                    is not None
-                )
-
-            # Dispatcher
-            if not allowed and dispute.dispatcher_id:
-
-                dispatcher_result = await session.execute(
-                    select(Dispatcher).where(
-                        Dispatcher.dispatcher_id
-                        == dispute.dispatcher_id,
-                        Dispatcher.user_id == user.uid,
-                    )
-                )
-
-                allowed = (
-                    dispatcher_result.scalar_one_or_none()
-                    is not None
-                )
 
             if not allowed:
                 raise HTTPException(
@@ -681,6 +658,7 @@ class DisputeService:
         shipment = await self._get_shipment(
             dispute.shipment_id,
             session,
+            lock=True,
         )
 
         # -----------------------------------------------------

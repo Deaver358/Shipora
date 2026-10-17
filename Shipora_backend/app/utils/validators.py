@@ -21,12 +21,14 @@ def create_url_safe_token(data: dict):
     return token
 
 
-def decode_url_safe_token(token: str):
+def decode_url_safe_token(token: str, max_age: int | None = None):
+    """Returns the token payload, or None when it is invalid or older than max_age seconds."""
     try:
-        token_data = serializer.loads(token, salt="verification")
+        token_data = serializer.loads(token, salt="verification", max_age=max_age)
         return token_data
     except Exception as e:
-        logging.error(str(e))
+        logging.getLogger("shipora.auth").info("Rejected URL token: %s", e)
+        return None
 
 
 def decode_token(token: str):

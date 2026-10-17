@@ -1,13 +1,42 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { api } from "../interceptors/api";
 import AuthStatusModal from "../components/AuthStatusModal";
 import "../index.css";
 import logo from "../assets/shipora-logo.jpeg";
-import { supabase } from "../supabaseClient";
+import { apiUrl } from "../config";
+import { clearAllCache } from "../utils/appCache";
+import { clearCachedProfile } from "../utils/profileCache";
+
+const NOTICES = {
+  expired: "Your session has expired. Please sign in again.",
+  verification_expired:
+    "That verification link is invalid or has expired. Sign in to get a new one.",
+  google: "Google sign-in didn't complete. Please try again.",
+  google_unavailable: "Google sign-in isn't available right now. Use your email and password.",
+};
+
+function getSafeRedirect(value) {
+  // only allow in-app paths
+  if (!value || !value.startsWith("/") || value.startsWith("//")) {
+    return "/home";
+  }
+  return value;
+}
 
 function Login() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+
+  const initialNotice =
+    (searchParams.get("session") === "expired" && NOTICES.expired) ||
+    (searchParams.get("verification") === "expired" && NOTICES.verification_expired) ||
+    (searchParams.get("error") && (NOTICES[searchParams.get("error")] || NOTICES.google)) ||
+    "";
+
+  const [error, setError] = useState(initialNotice);
+  const [needsVerification, setNeedsVerification] = useState(false);
+  const [resendState, setResendState] = useState("");
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -25,6 +54,9 @@ function Login() {
     event.preventDefault();
 
     setModalType(null);
+    setError("");
+    setNeedsVerification(false);
+    setResendState("");
     setLoading(true);
 
     try {
@@ -33,9 +65,7 @@ function Login() {
         password,
       };
 
-      const { data } = await api.post("auth/sign_in/", loginData);
-
-      console.log("Login response:", data);
+      const { data } = await api.post("auth/sign_in", loginData);
 
       if (!data || !data.user_uid) {
         throw new Error(
@@ -43,12 +73,48 @@ function Login() {
         );
       }
 
+      // Don't show the previous user's cached data
+      clearAllCache();
+      clearCachedProfile();
+
       setModalType("loginSuccess");
     } catch (loginError) {
-      console.error("Login error:", loginError);
-      setModalType("error");
+      const status = loginError?.response?.status;
+      const detail = loginError?.response?.data?.detail;
+
+      if (status === 403 && /verify/i.test(String(detail))) {
+        setNeedsVerification(true);
+        setError(detail);
+      } else if (status === 404 || status === 401) {
+        setError(
+          typeof detail === "string" && detail.includes("Google")
+            ? detail
+            : "Incorrect email or password. Please try again."
+        );
+      } else if (!loginError?.response) {
+        setError("We can't reach SHIPORA right now. Check your connection and try again.");
+      } else {
+        setError(
+          typeof detail === "string"
+            ? detail
+            : "Your account could not be signed in. Please try again."
+        );
+      }
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleResendVerification = async () => {
+    if (!email.trim()) return;
+
+    setResendState("sending");
+
+    try {
+      await api.post("auth/resend_verification", { email: email.trim() });
+      setResendState("sent");
+    } catch {
+      setResendState("failed");
     }
   };
 
@@ -56,37 +122,18 @@ function Login() {
     setModalType(null);
     setGoogleLoading(true);
 
-    try {
-      const { error: googleError } =
-        await supabase.auth.signInWithOAuth({
-          provider: "google",
-          options: {
-            redirectTo: `${window.location.origin}/home`,
-            queryParams: {
-              access_type: "offline",
-              prompt: "select_account",
-            },
-          },
-        });
-
-      if (googleError) {
-        throw googleError;
-      }
-    } catch (googleError) {
-      console.error("Google login error:", googleError);
-
-      setModalType("error");
-      setGoogleLoading(false);
-    }
+    // The backend runs the Google OAuth flow, sets the session cookies and
+    // sends the user back to /home.
+    window.location.href = apiUrl("auth/login/google?remember_me=true");
   };
 
   const handleModalClose = () => {
   if (modalType === "loginSuccess") {
     closeModal();
 
-    // Authenticated users go to Home.
+    // Authenticated users go back to where they were, or Home.
     // VerificationPrompt is mounted on /home.
-    navigate("/home", { replace: true });
+    navigate(getSafeRedirect(searchParams.get("redirect")), { replace: true });
     return;
   }
 
@@ -118,6 +165,31 @@ function Login() {
             Access your deliveries, shipments and SHIPORA services.
           </p>
         </div>
+
+        {error && (
+          <div className="auth-message auth-error" role="alert">
+            {error}
+
+            {needsVerification && (
+              <div>
+                <button
+                  type="button"
+                  className="auth-forgot-button"
+                  onClick={handleResendVerification}
+                  disabled={resendState === "sending" || resendState === "sent"}
+                >
+                  {resendState === "sending"
+                    ? "Sending..."
+                    : resendState === "sent"
+                      ? "Verification email sent — check your inbox."
+                      : resendState === "failed"
+                        ? "Couldn't send. Try again"
+                        : "Resend verification email"}
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Login Form */}
         <form className="auth-form" onSubmit={handleLogin}>

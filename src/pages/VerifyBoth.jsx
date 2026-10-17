@@ -2,9 +2,9 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import AuthStatusModal from "../components/AuthStatusModal";
 import "../index.css";
+import { API_BASE_URL as CONFIG_API_BASE_URL } from "../config";
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000/api/v1.0";
+const API_BASE_URL = CONFIG_API_BASE_URL;
 
 function VerifyBoth() {
   const navigate = useNavigate();
@@ -91,7 +91,7 @@ function VerifyBoth() {
     };
 
     try {
-      const response = await fetch(`${API_BASE_URL}/both/verify`, {
+      const response = await fetch(`${API_BASE_URL}/bothroles/verify`, {
         method: "POST",
         headers: {
           "Content-Type": "application/json",

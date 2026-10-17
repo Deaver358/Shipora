@@ -1,11 +1,11 @@
-export function setAccessToken( uid: string, token: string){
+export function setAccessToken(uid, token) {
     sessionStorage.setItem(uid, token);
 }
 
-export function getAccessToken(uid: string){
+export function getAccessToken(uid) {
     return sessionStorage.getItem(uid);
 }
 
-export function clearAccessToken(uid: string){
+export function clearAccessToken(uid) {
     sessionStorage.removeItem(uid);
 }

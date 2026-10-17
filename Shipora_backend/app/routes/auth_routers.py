@@ -9,7 +9,7 @@ from fastapi import (
 )
 from fastapi.responses import JSONResponse, RedirectResponse
 from fastapi.exceptions import HTTPException
-from sqlalchemy import select
+from sqlalchemy import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi.templating import Jinja2Templates
 
@@ -19,15 +19,16 @@ from app.core.dependencies import (
     RefreshTokenBearer,
     get_this_user,
 )
-from app.schema.auth_schema import SignUpModel, LoginModel
+from app.schema.auth_schema import SignUpModel, LoginModel, EmailRequest, PasswordResetConfirm
 from app.schema.user import UserDataModel
 from app.models.user_model import User, UserRole
-from app.services.auth_services import AuthService
+from app.services.auth_services import AuthService, normalize_email
 from app.utils.validators import (
     create_url_safe_token,
     create_access_token,
     create_refresh_token,
     decode_url_safe_token,
+    decode_token,
 )
 from app.utils.mail import (
     send_email_verification_email,
@@ -37,18 +38,149 @@ from app.utils.hash_password import verify_hash, hash_password
 from app.utils.path import template_path
 from app.utils.google import oauth
 from app.utils.errors import UserNotFound, InvalidToken
-from app.utils.redis import store_access_token, store_refresh_token
+from app.utils.redis import (
+    store_access_token,
+    store_refresh_token,
+    del_access_token,
+    del_refresh_token,
+    add_jti_to_blocklist,
+    REDIS_UNAVAILABLE_ERRORS,
+)
 from app.utils.config import settings
+from app.utils.rate_limit import enforce as rate_limit
 
 import asyncio
+import hashlib
+import hmac
+import logging
 
 
 router = APIRouter()
 auth_service = AuthService()
+logger = logging.getLogger("shipora.auth")
 
 REFRESH_TOKEN_EXPIRY = 604800
 
 template = Jinja2Templates(template_path)
+
+VERIFY_PURPOSE = "verify"
+RESET_PURPOSE = "reset"
+
+
+# ============================================================
+# HELPERS
+# ============================================================
+
+def _cookie_options() -> dict:
+    options = dict(
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        path="/",
+    )
+    if settings.COOKIE_DOMAIN:
+        options["domain"] = settings.COOKIE_DOMAIN
+    return options
+
+
+def _set_auth_cookies(response: Response, access_token: str | None = None, refresh_token: str | None = None, refresh_max_age: int | None = None):
+    options = _cookie_options()
+    if refresh_token is not None:
+        response.set_cookie(
+            key="refresh_token",
+            value=refresh_token,
+            max_age=refresh_max_age,
+            **options,
+        )
+    if access_token is not None:
+        response.set_cookie(
+            key="access_token",
+            value=access_token,
+            **options,
+        )
+
+
+def _clear_auth_cookies(response: Response):
+    options = _cookie_options()
+    options.pop("httponly", None)
+    for key in ("access_token", "refresh_token"):
+        response.delete_cookie(key=key, **options)
+
+
+async def _issue_tokens(user: User, with_refresh: bool = True):
+    user_data = {
+        "email": str(user.email),
+        "uid": str(user.uid),
+    }
+
+    access_token, access_payload = create_access_token(
+        user_data=user_data,
+    )
+
+    refresh_token = refresh_payload = None
+    if with_refresh:
+        refresh_token, _jti, refresh_payload = create_refresh_token(
+            user_data=user_data,
+            expiry=REFRESH_TOKEN_EXPIRY,
+            refresh=True,
+        )
+
+    # Store tokens under the USER UID because AccessTokenBearer and
+    # RefreshTokenBearer look them up by the UID inside the token.
+    try:
+        await store_access_token(user_uid=str(user.uid), value=access_payload)
+        if refresh_payload:
+            await store_refresh_token(user_uid=str(user.uid), value=refresh_payload)
+    except REDIS_UNAVAILABLE_ERRORS as exc:
+        if not settings.REDIS_FAIL_OPEN:
+            raise HTTPException(
+                status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
+                detail="Sign-in is temporarily unavailable. Please try again shortly.",
+            )
+        logger.warning("Redis unavailable while issuing tokens: %s", exc)
+
+    return access_token, refresh_token
+
+
+def _password_fingerprint(user: User) -> str:
+    # Changes whenever the password changes, so a reset link works once.
+    return hashlib.sha256((user.password or "").encode()).hexdigest()[:16]
+
+
+def _verification_link(email: str) -> str:
+    token = create_url_safe_token({"email": normalize_email(email), "purpose": VERIFY_PURPOSE})
+    return token
+
+
+def _decode_verification_token(token: str):
+    data = decode_url_safe_token(
+        token,
+        max_age=settings.EMAIL_VERIFICATION_MAX_AGE_HOURS * 3600,
+    )
+    if not data or data.get("purpose", VERIFY_PURPOSE) != VERIFY_PURPOSE:
+        return None
+    return data
+
+
+async def _user_from_reset_token(token: str, session: AsyncSession):
+    data = decode_url_safe_token(
+        token,
+        max_age=settings.PASSWORD_RESET_MAX_AGE_MINUTES * 60,
+    )
+    if not data or data.get("purpose") != RESET_PURPOSE:
+        return None
+    user = await auth_service.get_user(email=data.get("email", ""), session=session)
+    if user is None or not hmac.compare_digest(str(data.get("fp", "")), _password_fingerprint(user)):
+        return None
+    return user
+
+
+async def _revoke_sessions(user_uid):
+    try:
+        await del_access_token(user_uid=str(user_uid))
+        await del_refresh_token(user_uid=str(user_uid))
+    except REDIS_UNAVAILABLE_ERRORS as exc:
+        logger.warning("Could not revoke sessions (Redis unavailable): %s", exc)
 
 
 # ============================================================
@@ -85,49 +217,31 @@ async def refresh_access_token(
     if not user_uid or not user_email:
         raise InvalidToken()
 
-    user = await auth_service.get_user(
-        email=user_email,
+    user = await auth_service.get_uid_user(
+        uid=user_uid,
         session=session,
     )
 
     if not user:
-        raise UserNotFound()
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="User not found",
+        )
 
-    user_data = {
-        "email": str(user.email),
-        "uid": str(user.uid),
-    }
-
-    new_access_token, access_payload = create_access_token(
-        user_data=user_data
-    )
+    new_access_token, _ = await _issue_tokens(user, with_refresh=False)
 
     if not new_access_token:
         raise InvalidToken()
 
-    # IMPORTANT:
-    # AccessTokenBearer retrieves the token using the user's UID.
-    await store_access_token(
-        user_uid=str(user.uid),
-        value=access_payload,
-    )
-
     response = JSONResponse(
         content={
-            "email": user_email,
+            "email": str(user.email),
             "user_uid": str(user.uid),
         },
         status_code=status.HTTP_200_OK,
     )
 
-    response.set_cookie(
-        key="access_token",
-        value=new_access_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        path="/",
-    )
+    _set_auth_cookies(response, access_token=new_access_token)
 
     return response
 
@@ -143,7 +257,24 @@ async def create_account(
     account_details: SignUpModel,
     session: AsyncSession = Depends(session),
 ):
+    await rate_limit(request, "sign_up", limit=30, window_seconds=3600)
+
+    if not account_details.terms_accepted:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="You must accept the Terms of Service and Privacy Policy.",
+        )
+
     user_data = account_details.model_dump()
+    user_data["email"] = normalize_email(user_data["email"])
+    user_data["fullname"] = user_data["fullname"].strip()
+    user_data["phone"] = user_data["phone"].strip()
+
+    if await auth_service.get_user_by_phone(user_data["phone"], session):
+        raise HTTPException(
+            detail="An account with this phone number already exists.",
+            status_code=status.HTTP_409_CONFLICT,
+        )
 
     create_user = await auth_service.create_user(
         user_data,
@@ -159,16 +290,10 @@ async def create_account(
     user_email = create_user.email
     username = create_user.fullname
 
-    token_data = {
-        "email": user_email,
-    }
-
-    token = create_url_safe_token(token_data)
-
     verification_link = str(
         request.url_for(
             "email_verification",
-            token=token,
+            token=_verification_link(user_email),
         )
     )
 
@@ -193,11 +318,15 @@ async def create_account(
 
 @router.post("/sign_in")
 async def log_in(
+    request: Request,
     login_data: LoginModel,
     session: AsyncSession = Depends(session),
 ):
     email = login_data.email
     password = login_data.password
+
+    # 10 attempts per 10 minutes per account per IP (CGNAT-friendly)
+    await rate_limit(request, "sign_in", limit=10, window_seconds=600, identity=email)
 
     user = await auth_service.get_user(
         email,
@@ -210,40 +339,31 @@ async def log_in(
             status_code=status.HTTP_404_NOT_FOUND,
         )
 
+    if not user.password:
+        raise HTTPException(
+            detail="This account uses Google sign-in. Continue with Google, or reset your password to set one.",
+            status_code=status.HTTP_401_UNAUTHORIZED,
+        )
+
     if not verify_hash(password, user.password):
         raise HTTPException(
             detail="Wrong password or email: try again",
             status_code=status.HTTP_401_UNAUTHORIZED,
         )
 
-    user_data = {
-        "email": str(user.email),
-        "uid": str(user.uid),
-    }
+    if not (user.account_verified or user.verified):
+        raise HTTPException(
+            detail="Please verify your email address before signing in. Check your inbox for the verification link.",
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
 
-    access_token, access_payload = create_access_token(
-        user_data=user_data,
-    )
+    if (user.status or "active").lower() != "active":
+        raise HTTPException(
+            detail="This account has been suspended. Contact Shipora support.",
+            status_code=status.HTTP_403_FORBIDDEN,
+        )
 
-    refresh_token, jti, refresh_payload = create_refresh_token(
-        user_data=user_data,
-        expiry=REFRESH_TOKEN_EXPIRY,
-        refresh=True,
-    )
-
-    # IMPORTANT:
-    # Store both tokens using the USER UID because
-    # AccessTokenBearer and RefreshTokenBearer retrieve
-    # them using the UID contained in the token.
-    await store_access_token(
-        user_uid=str(user.uid),
-        value=access_payload,
-    )
-
-    await store_refresh_token(
-        user_uid=str(user.uid),
-        value=refresh_payload,
-    )
+    access_token, refresh_token = await _issue_tokens(user)
 
     max_age = 60 * 60 * 24 * 30
 
@@ -255,27 +375,53 @@ async def log_in(
         status_code=status.HTTP_200_OK,
     )
 
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        path="/",
-        max_age=max_age,
-    )
-
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        path="/",
+    _set_auth_cookies(
+        response,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        refresh_max_age=max_age,
     )
 
     return response
 
+
+# ============================================================
+# LOGOUT
+# ============================================================
+
+@router.post("/logout")
+async def log_out(request: Request):
+    """
+    Clears the httpOnly auth cookies (the browser can't do that itself) and
+    revokes the tokens stored in Redis. Works even if the session already
+    expired.
+    """
+    uid = None
+    for name in ("access_token", "refresh_token"):
+        token = request.cookies.get(name)
+        if not token:
+            continue
+        try:
+            token_data = await asyncio.to_thread(decode_token, token)
+        except HTTPException:
+            token_data = None
+        uid = ((token_data or {}).get("user") or {}).get("uid")
+        if uid:
+            break
+
+    if uid:
+        await _revoke_sessions(uid)
+
+    access = request.cookies.get("access_token")
+    if access:
+        try:
+            await add_jti_to_blocklist(access)
+        except REDIS_UNAVAILABLE_ERRORS:
+            pass
+
+    response = JSONResponse(content={"message": "Signed out."})
+    _clear_auth_cookies(response)
+    return response
 
 
 # ============================================================
@@ -284,6 +430,7 @@ async def log_in(
 
 @router.post("/admin-login")
 async def admin_login(
+    request: Request,
     login_data: LoginModel,
     response: Response,
     session: AsyncSession = Depends(session),
@@ -291,11 +438,14 @@ async def admin_login(
     email = str(login_data.email).strip().lower()
     password = login_data.password
 
+    await rate_limit(request, "admin_login", limit=10, window_seconds=900)
+
     # Admin credentials stay on the backend in .env.
-    if (
-        email != str(settings.ADMIN_EMAIL).strip().lower()
-        or password != settings.ADMIN_PASSWORD
-    ):
+    email_ok = hmac.compare_digest(email, str(settings.ADMIN_EMAIL).strip().lower())
+    password_ok = hmac.compare_digest(
+        password.encode("utf-8"), str(settings.ADMIN_PASSWORD).encode("utf-8")
+    )
+    if not (email_ok and password_ok):
         raise HTTPException(
             detail="Invalid admin credentials.",
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -303,8 +453,8 @@ async def admin_login(
 
     # The admin must also exist as an admin user in the database because
     # the existing RoleChecker verifies the authenticated DB user's role.
-    statement = select(User).where(User.email == email)
-    user = (await session.execute(statement)).scalars().one_or_none()
+    statement = select(User).where(func.lower(User.email) == email)
+    user = (await session.execute(statement)).scalars().first()
 
     if user is None:
         user = User(
@@ -348,31 +498,16 @@ async def admin_login(
             await session.commit()
             await session.refresh(user)
 
-    user_data = {
-        "email": str(user.email),
-        "uid": str(user.uid),
-    }
-
-    access_token, access_payload = create_access_token(
-        user_data=user_data,
-    )
+    access_token, refresh_token = await _issue_tokens(user)
 
     if not access_token:
         raise InvalidToken()
 
-    # AccessTokenBearer retrieves the token using the user's UID.
-    await store_access_token(
-        user_uid=str(user.uid),
-        value=access_payload,
-    )
-
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        path="/",
+    _set_auth_cookies(
+        response,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        refresh_max_age=60 * 60 * 12,
     )
 
     return {
@@ -385,20 +520,26 @@ async def admin_login(
 # GOOGLE LOGIN
 # ============================================================
 
+def _google_callback_url(request: Request) -> str:
+    # Must match an "Authorized redirect URI" in Google Cloud Console.
+    if settings.GOOGLE_REDIRECT_URI:
+        return settings.GOOGLE_REDIRECT_URI
+    return str(request.url_for("auth_google"))
+
+
 @router.get("/login/google")
 async def login_with_google(
     request: Request,
     remember_me: bool = False,
 ):
-    request.session["remember_me"] = remember_me
+    if not settings.GOOGLE_CLIENT_ID or not settings.GOOGLE_CLIENT_SECRET:
+        return RedirectResponse(url=f"{settings.frontend_url}/login?error=google_unavailable")
 
-    redirect_url = request.url_for(
-        "auth_google"
-    )
+    request.session["remember_me"] = remember_me
 
     return await oauth.google.authorize_redirect(
         request,
-        redirect_url,
+        _google_callback_url(request),
     )
 
 
@@ -407,14 +548,21 @@ async def auth_google(
     request: Request,
     session: AsyncSession = Depends(session),
 ):
-    token = await oauth.google.authorize_access_token(request)
+    try:
+        token = await oauth.google.authorize_access_token(request)
+    except Exception as exc:
+        logger.warning("Google sign-in failed: %s", exc)
+        return RedirectResponse(url=f"{settings.frontend_url}/login?error=google")
 
-    user_info = token["userinfo"]
+    user_info = token.get("userinfo") or {}
 
-    email = user_info["email"]
-    name = user_info["name"]
+    email = normalize_email(user_info.get("email"))
+    name = user_info.get("name") or email.split("@")[0]
 
-    remember_me = request.session.get(
+    if not email or user_info.get("email_verified") is False:
+        return RedirectResponse(url=f"{settings.frontend_url}/login?error=google")
+
+    remember_me = request.session.pop(
         "remember_me",
         False,
     )
@@ -425,45 +573,29 @@ async def auth_google(
     )
 
     if added_user is None:
-        added_user = await auth_service.create_user(
+        await auth_service.create_user(
             user_data={
                 "fullname": name,
                 "email": email,
                 "password": None,
+                "phone": None,
                 "verified": True,
+                "account_verified": True,
+                "terms_accepted": True,
+                "terms_version": "google",
             },
             session=session,
         )
+        added_user = await auth_service.get_user(email=email, session=session)
+    elif not added_user.account_verified:
+        # Google has verified this email address for us
+        added_user.account_verified = True
+        await session.commit()
 
-    user_data = {
-        "email": str(added_user.email),
-        "uid": str(added_user.uid),
-    }
-
-    access_token, access_payload = create_access_token(
-        user_data=user_data,
-    )
-
-    refresh_token, jti, refresh_payload = create_refresh_token(
-        user_data=user_data,
-        expiry=REFRESH_TOKEN_EXPIRY,
-        refresh=True,
-    )
-
-    # IMPORTANT:
-    # Use the actual user UID, NOT the refresh-token JTI.
-    await store_access_token(
-        user_uid=str(added_user.uid),
-        value=access_payload,
-    )
-
-    await store_refresh_token(
-        user_uid=str(added_user.uid),
-        value=refresh_payload,
-    )
+    access_token, refresh_token = await _issue_tokens(added_user)
 
     response = RedirectResponse(
-        url="http://localhost:5173/dashboard"
+        url=f"{settings.frontend_url}/home"
     )
 
     max_age = (
@@ -472,23 +604,11 @@ async def auth_google(
         else 60 * 60 * 24
     )
 
-    response.set_cookie(
-        key="refresh_token",
-        value=refresh_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        path="/",
-        max_age=max_age,
-    )
-
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        secure=True,
-        samesite="none",
-        path="/",
+    _set_auth_cookies(
+        response,
+        access_token=access_token,
+        refresh_token=refresh_token,
+        refresh_max_age=max_age,
     )
 
     return response
@@ -500,7 +620,10 @@ async def auth_google(
 
 @router.get("/login/outlook")
 async def login_with_outlook():
-    pass
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Outlook sign-in is not available yet.",
+    )
 
 
 # ============================================================
@@ -517,17 +640,13 @@ async def verify_account(
     session: AsyncSession = Depends(session),
 ):
     token_data = await asyncio.to_thread(
-        decode_url_safe_token,
-        token=token,
+        _decode_verification_token,
+        token,
     )
 
     if token_data is None:
-        raise HTTPException(
-            status_code=status.HTTP_403_FORBIDDEN,
-            detail={
-                "message": "Token is Invalid"
-            },
-        )
+        # Expired / tampered link: send the user to the app with a hint
+        return RedirectResponse(url=f"{settings.frontend_url}/login?verification=expired")
 
     email = token_data["email"]
 
@@ -539,15 +658,16 @@ async def verify_account(
     if user is None:
         raise UserNotFound()
 
-    await auth_service.update_user_info(
-        user=user,
-        info={
-            "account_verified": True
-        },
-        session=session,
-    )
+    if not user.account_verified:
+        await auth_service.update_user_info(
+            user=user,
+            info={
+                "account_verified": True
+            },
+            session=session,
+        )
 
-    login_link = "http://localhost:5173/login"
+    login_link = f"{settings.frontend_url}/login"
 
     return template.TemplateResponse(
         request=request,
@@ -564,6 +684,44 @@ async def verify_account(
 # RESEND VERIFICATION
 # ============================================================
 
+async def _queue_verification_email(request: Request, bg: BackgroundTasks, email: str, session: AsyncSession):
+    await rate_limit(request, "resend_verification", limit=5, window_seconds=900, identity=email)
+
+    user = await auth_service.get_user(email=email, session=session)
+
+    # Same response whether or not the account exists (no account probing)
+    if user is not None and not (user.account_verified or user.verified):
+        verification_link = str(
+            request.url_for(
+                "email_verification",
+                token=_verification_link(user.email),
+            )
+        )
+        bg.add_task(
+            send_email_verification_email,
+            users_email=user.email,
+            username=user.fullname,
+            verification_link=verification_link,
+        )
+
+    return JSONResponse(
+        content={
+            "message": "An Email has been sent for verification of account".title()
+        },
+        status_code=status.HTTP_201_CREATED,
+    )
+
+
+@router.post("/resend_verification")
+async def resend_verification(
+    bg: BackgroundTasks,
+    request: Request,
+    data: EmailRequest,
+    session: AsyncSession = Depends(session),
+):
+    return await _queue_verification_email(request, bg, data.email, session)
+
+
 @router.get(
     "/resend_verification/{email}/{username}"
 )
@@ -574,34 +732,9 @@ async def resend_verify(
     username: str,
     session: AsyncSession = Depends(session),
 ):
-    token_data = {
-        "email": email,
-    }
-
-    token = create_url_safe_token(
-        data=token_data
-    )
-
-    verification_link = str(
-        request.url_for(
-            "email_verification",
-            token=token,
-        )
-    )
-
-    bg.add_task(
-        send_email_verification_email,
-        users_email=email,
-        username=username,
-        verification_link=verification_link,
-    )
-
-    return JSONResponse(
-        content={
-            "message": "An Email has been sent for verification of account".title()
-        },
-        status_code=status.HTTP_201_CREATED,
-    )
+    # Kept for backwards compatibility. The name in the email now always
+    # comes from the account, never from the URL.
+    return await _queue_verification_email(request, bg, email, session)
 
 
 # ============================================================
@@ -615,50 +748,44 @@ async def reset_user_password(
     email: str,
     session: AsyncSession = Depends(session),
 ):
+    email = normalize_email(email)
+
+    await rate_limit(request, "reset_password", limit=5, window_seconds=900, identity=email)
+
     user = await auth_service.get_user(
         email=email,
         session=session,
     )
 
-    if user is None:
-        raise HTTPException(
-            status_code=404,
-            detail="User not found try signing up",
+    if user is not None:
+        safe_token = create_url_safe_token(
+            {
+                "email": user.email,
+                "purpose": RESET_PURPOSE,
+                "fp": _password_fingerprint(user),
+            }
         )
 
-    token_data = {
-        "email": email,
-    }
+        # The link opens the app's Reset Password page
+        reset_link = f"{settings.frontend_url}/reset-password?token={safe_token}"
 
-    username = user.fullname
-
-    safe_token = create_url_safe_token(
-        token_data
-    )
-
-    reset_link = str(
-        request.url_for(
-            "reset_link",
-            token=safe_token,
+        bg.add_task(
+            send_password_reset_email,
+            users_email=user.email,
+            username=user.fullname,
+            verification_link=reset_link,
         )
-    )
 
-    bg.add_task(
-        send_password_reset_email,
-        users_email=email,
-        username=username,
-        verification_link=reset_link,
-    )
-
+    # Same answer either way so the endpoint can't be used to find accounts
     return JSONResponse(
         content={
-            "message": f"Reset email has been sent to {email}"
+            "message": f"If an account exists for {email}, a reset email has been sent."
         }
     )
 
 
 # ============================================================
-# PASSWORD RESET FORM
+# PASSWORD RESET FORM (server-rendered fallback)
 # ============================================================
 
 @router.get(
@@ -670,35 +797,19 @@ async def password_reset_form(
     token: str,
     session: AsyncSession = Depends(session),
 ):
-    token_data = await asyncio.to_thread(
-        decode_url_safe_token,
-        token=token,
-    )
+    user = await _user_from_reset_token(token, session)
 
-    if token_data is None:
+    if user is None:
         raise HTTPException(
             status_code=403,
             detail={
-                "message": "Invalid Token"
+                "message": "This reset link is invalid or has expired."
             },
         )
 
-    email = token_data["email"]
+    home_link = f"{settings.frontend_url}/login"
 
-    user = await auth_service.get_user(
-        email=email,
-        session=session,
-    )
-
-    if user is None:
-        raise UserNotFound()
-
-    home_link = "http://localhost:5173/login"
-
-    form_link = (
-        f"http://127.0.0.1:8000/"
-        f"api/v1.0/auth/password_reset?token={token}"
-    )
+    form_link = f"{request.url_for('verify_reset_link')}?token={token}"
 
     return template.TemplateResponse(
         request=request,
@@ -716,6 +827,43 @@ async def password_reset_form(
 # VERIFY PASSWORD RESET
 # ============================================================
 
+async def _apply_password_reset(token: str, new_password: str, confirm_password: str, session: AsyncSession):
+    user = await _user_from_reset_token(token, session)
+
+    if user is None:
+        raise HTTPException(
+            status_code=403,
+            detail="This reset link is invalid or has expired. Request a new one.",
+        )
+
+    if new_password != confirm_password:
+        raise HTTPException(
+            status_code=400,
+            detail="Passwords do not match",
+        )
+
+    if len(new_password or "") < 8:
+        raise HTTPException(
+            status_code=400,
+            detail="Your new password must be at least 8 characters.",
+        )
+
+    await auth_service.update_user_info(
+        user=user,
+        info={
+            "password": hash_password(new_password),
+            # the reset email proves ownership of the address
+            "account_verified": True,
+        },
+        session=session,
+    )
+
+    # Sign out every existing session for this account
+    await _revoke_sessions(user.uid)
+
+    return user
+
+
 @router.post(
     "/password_reset",
     name="verify_reset_link",
@@ -727,48 +875,9 @@ async def verify_password_reset(
     new_password=Form(...),
     confirm_password: str = Form(...),
 ):
-    token_data = await asyncio.to_thread(
-        decode_url_safe_token,
-        token=token,
-    )
+    await _apply_password_reset(token, new_password, confirm_password, session)
 
-    if token_data is None:
-        raise HTTPException(
-            status_code=403,
-            detail={
-                "message": "Invalid Token"
-            },
-        )
-
-    email = token_data["email"]
-
-    user = await auth_service.get_user(
-        email=email,
-        session=session,
-    )
-
-    if user is None:
-        raise UserNotFound()
-
-    if new_password != confirm_password:
-        raise HTTPException(
-            status_code=400,
-            detail="Passwords do not match",
-        )
-
-    new_password_hash = hash_password(
-        new_password
-    )
-
-    await auth_service.update_user_info(
-        user=user,
-        info={
-            "password": new_password_hash
-        },
-        session=session,
-    )
-
-    home_link = "http://localhost:5173/login"
+    home_link = f"{settings.frontend_url}/login"
 
     return template.TemplateResponse(
         request=request,
@@ -780,10 +889,25 @@ async def verify_password_reset(
     )
 
 
+@router.post("/password_reset/confirm")
+async def confirm_password_reset(
+    request: Request,
+    data: PasswordResetConfirm,
+    session: AsyncSession = Depends(session),
+):
+    """JSON version used by the frontend Reset Password page."""
+    await rate_limit(request, "password_reset", limit=10, window_seconds=900)
+    await _apply_password_reset(data.token, data.new_password, data.confirm_password, session)
+    return {"message": "Your password has been updated. You can now sign in."}
+
+
 # ============================================================
 # DELETE ACCOUNT
 # ============================================================
 
 @router.delete("/delete_account")
 async def delete_account_():
-    pass
+    raise HTTPException(
+        status_code=status.HTTP_501_NOT_IMPLEMENTED,
+        detail="Account deletion is handled by Shipora support. Please contact us.",
+    )

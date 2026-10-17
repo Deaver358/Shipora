@@ -1,5 +1,4 @@
-const API_URL =
-  import.meta.env.VITE_API_URL || "http://localhost:8000";
+import { apiUrl } from "../config";
 
 async function request(endpoint, options = {}) {
   const {
@@ -27,9 +26,9 @@ async function request(endpoint, options = {}) {
     }
   }
 
-  const response = await fetch(`${API_URL}${endpoint}`, config);
+  const response = await fetch(apiUrl(endpoint), config);
 
-  let data = null;
+  let data;
 
   try {
     data = await response.json();

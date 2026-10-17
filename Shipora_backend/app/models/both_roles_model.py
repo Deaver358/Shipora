@@ -148,10 +148,12 @@ class BothRoles(SQLModel, table=True):
         )
     )
 
+    # CAC is optional (individual vendors don't have one)
     cac_number: Optional[str] = Field(
+        default=None,
         sa_column=Column(
             pg.VARCHAR,
-            nullable=False,
+            nullable=True,
             unique=True,
             index=True,
         )
@@ -171,10 +173,11 @@ class BothRoles(SQLModel, table=True):
         )
     )
 
-    business_email: str = Field(
+    business_email: Optional[str] = Field(
+        default=None,
         sa_column=Column(
             pg.VARCHAR,
-            nullable=False,
+            nullable=True,
         )
     )
 

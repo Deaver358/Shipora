@@ -1,6 +1,9 @@
 import { useNavigate } from "react-router-dom";
 import shiporaLogo from "../assets/shipora-logo.jpeg";
 import "../index.css";
+import { api } from "../interceptors/api";
+import { clearAllCache } from "../utils/appCache";
+import { clearCachedProfile } from "../utils/profileCache";
 
 function SettingsIcon({ type }) {
   if (type === "password") {
@@ -157,8 +160,17 @@ function SettingsIcon({ type }) {
 function Settings() {
   const navigate = useNavigate();
 
-  const handleLogout = () => {
-    navigate("/");
+  const handleLogout = async () => {
+    try {
+      // httpOnly session cookies can only be cleared by the server
+      await api.post("auth/logout");
+    } catch (error) {
+      console.error("Logout error:", error);
+    } finally {
+      clearAllCache();
+      clearCachedProfile();
+      navigate("/login", { replace: true });
+    }
   };
 
   return (

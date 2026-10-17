@@ -3,7 +3,7 @@ import { api } from "../interceptors/api";
 import axios from "axios";
 import { useUser } from "../contexts/userContext";
 
-export function getUserFunc () {
+export function useAuthUser () {
 
     const { currentUser, setCurrentUser } = useUser();
     const [ error, setError ] = useState('');
@@ -13,9 +13,9 @@ export function getUserFunc () {
 
         async function fetchUser() {
             try {
-                const res = await api.get("/user/current_user");
+                const res = await api.get("auth/current_user");
                 if (!cancelled) {const user = res.data; setCurrentUser(user)}
-            }catch (err: unknown){
+            }catch (err){
                 if (cancelled) return;
                 if (axios.isAxiosError(err)){
                     setError(err.response?.data?.detail || "Failed to fetch user");
@@ -34,3 +34,6 @@ export function getUserFunc () {
 
     return { currentUser, error };
 }
+
+// Backwards-compatible name used by hooks/useUser.js
+export const getUserFunc = useAuthUser;

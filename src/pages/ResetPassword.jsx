@@ -1,11 +1,14 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import AuthStatusModal from "../components/AuthStatusModal";
 import "../index.css";
 import logo from "../assets/shipora-logo.jpeg";
+import { api } from "../interceptors/api";
 
 function ResetPassword() {
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const token = searchParams.get("token") || "";
 
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -23,10 +26,17 @@ function ResetPassword() {
     email: "",
   });
 
-  const handleSubmit = (event) => {
+  const handleSubmit = async (event) => {
     event.preventDefault();
 
     setError("");
+
+    if (!token) {
+      setError(
+        "This reset link is incomplete. Please use the link from your email or request a new one."
+      );
+      return;
+    }
 
     if (password.length < 8) {
       setError(
@@ -42,22 +52,31 @@ function ResetPassword() {
 
     setLoading(true);
 
-    /*
-     * Frontend-only for now.
-     *
-     * The actual Supabase/FastAPI password update
-     * will be connected when the reset backend flow
-     * is completed.
-     */
-    setTimeout(() => {
-      setLoading(false);
+    try {
+      await api.post("auth/password_reset/confirm", {
+        token,
+        new_password: password,
+        confirm_password: confirmPassword,
+      });
 
       setAuthModal({
         open: true,
         type: "passwordChanged",
         email: "",
       });
-    }, 1200);
+    } catch (resetError) {
+      const detail = resetError?.response?.data?.detail;
+
+      setError(
+        typeof detail === "string"
+          ? detail
+          : Array.isArray(detail)
+            ? detail.map((item) => item?.msg).join(", ")
+            : "We couldn't update your password. Please try again."
+      );
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleModalClose = () => {
