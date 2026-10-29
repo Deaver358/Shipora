@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import "../index.css";
+import { API_BASE_URL as CONFIG_API_BASE_URL } from "../config";
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:8000/api/v1";
+const API_BASE = CONFIG_API_BASE_URL;
 
 const ACTIVE_STATUSES = [
   "open",
@@ -115,17 +114,6 @@ function getPersonName(person, fallback = "Not available") {
   ].filter(Boolean);
 
   return parts.length ? parts.join(" ") : fallback;
-}
-
-function getShipmentTitle(dispute) {
-  return (
-    dispute.item_description ||
-    dispute.package_description ||
-    dispute.shipment_description ||
-    dispute.item ||
-    dispute.shipment?.item_description ||
-    "Shipment"
-  );
 }
 
 export default function AdminDisputes() {

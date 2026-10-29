@@ -2,10 +2,9 @@ import { useState } from "react";
 import { useNavigate, NavLink } from "react-router-dom";
 import shiporaLogo from "../assets/shipora-logo.jpeg";
 import "../index.css";
+import { API_BASE_URL as CONFIG_API_BASE_URL } from "../config";
 
-const API_BASE =
-  import.meta.env.VITE_API_BASE_URL ||
-  "http://localhost:8000/api/v1";
+const API_BASE = CONFIG_API_BASE_URL;
 
 function Tracking() {
   const navigate = useNavigate();

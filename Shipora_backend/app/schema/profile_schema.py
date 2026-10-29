@@ -50,7 +50,8 @@ class ProfileResponse(BaseModel):
     uid: uuid.UUID
     fullname: str
     email: str
-    phone: str
+    # Admin and Google accounts may not have a phone number yet
+    phone: Optional[str] = None
     avatar_url: Optional[str] = None
     role: str
 
@@ -64,14 +65,14 @@ class ProfileUpdateRequest(BaseModel):
 
 
 class BankAccountUpdateRequest(BaseModel):
-    bank_code: str
-    account_number: str = Field(min_length=10, max_length=10)
+    bank_code: str = Field(min_length=1)
+    account_number: str = Field(min_length=10, max_length=10, pattern=r"^\d{10}$")
 
 
 class BankAccountResponse(BaseModel):
     bank_code: str
     account_number: str
-    account_name: str
+    account_name: Optional[str] = None
 
 
 class ChangePasswordRequest(BaseModel):

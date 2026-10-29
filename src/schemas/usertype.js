@@ -1,4 +1,5 @@
+/**
+ * @typedef {Object} User
+ */
 
-
-export type User = {
-}
+export {};

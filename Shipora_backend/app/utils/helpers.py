@@ -1,4 +1,5 @@
 from enum import Enum
+from html import escape
 from .path import email_verification_path, password_reset_path
 from .config import settings
 
@@ -13,6 +14,10 @@ def get_html_email(email_types: EmailTypes, username: str, verification_link: st
         if email_types == EmailTypes.email
         else password_reset_path
     )
+
+    # Names are user supplied — escape them so they can't inject HTML into emails
+    username = escape(username or "there")
+    verification_link = escape(verification_link or "", quote=True)
 
     with open(path, "r", encoding="utf-8") as file:
         html_text = file.read()

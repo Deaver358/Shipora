@@ -9,7 +9,7 @@ export const SignupProvider = ({ children }) => {
         phone_number: "",
         role: "",
         password: "",
-        profile_image: "http://localhost:8000/static/images/profileimg.avif"
+        profile_image: ""
     })
 
     return (

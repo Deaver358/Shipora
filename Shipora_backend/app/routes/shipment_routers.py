@@ -1,6 +1,10 @@
 import json
+import logging
+import re
 import uuid
+from html import escape
 from fastapi import APIRouter, Depends, status, Request, Header, BackgroundTasks, HTTPException
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.session_config import session
@@ -18,26 +22,29 @@ from app.utils.mail import create_message, mail
 
 router = APIRouter()
 shipment_service = ShipmentService()
+logger = logging.getLogger("shipora.shipments")
+
+EMAIL_RE = re.compile(r"^[^@\s]+@[^@\s]+\.[^@\s]+$")
 
 
 async def _send_shipment_email(email: str, shipment):
-    link = f"{settings.PUBLIC_BASE_URL.rstrip('/')}/shipment/{shipment.public_token}"
+    link = f"{settings.frontend_url}/shipment/{shipment.shipment_id}"
     html = f"""
     <div style="font-family:Arial,sans-serif;max-width:620px;margin:auto;padding:24px">
-      <h2>Shipora — Shipment Created</h2>
-      <p>Your shipment has been created and is awaiting payment.</p>
+      <h2>Shipora — Shipment Paid</h2>
+      <p>Your shipment has been paid from your Shipora balance and is now live for dispatchers.</p>
       <p><strong>Tracking number:</strong> {shipment.tracking_number}</p>
-      <p><strong>Package:</strong> {shipment.item_name}</p>
+      <p><strong>Package:</strong> {escape(shipment.item_name or "")}</p>
       <p><strong>Delivery fee:</strong> ₦{shipment.delivery_fee/100:,.2f}</p>
       <p><strong>Service fee:</strong> ₦{shipment.service_fee/100:,.2f}</p>
       <p><a href="{link}" style="display:inline-block;padding:12px 18px;background:#111;color:#fff;text-decoration:none;border-radius:6px">View Shipment / Checkout</a></p>
     </div>
     """
     try:
-        msg = await create_message([email], "Shipora — Shipment Created", html)
+        msg = await create_message([email], "Shipora — Shipment Paid", html)
         await mail.send_message(msg)
     except Exception as exc:
-        print(f"Shipment email failed: {exc}")
+        logger.warning("Shipment email failed: %s", exc)
 
 
 @router.post("", response_model=ShipmentDetailResponse, status_code=status.HTTP_201_CREATED)
@@ -92,31 +99,81 @@ async def paystack_webhook(
             "Invalid Paystack signature.",
         )
 
-    payload = json.loads(raw.decode("utf-8"))
+    try:
+        payload = json.loads(raw.decode("utf-8"))
+    except ValueError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid JSON payload.")
+
     event = payload.get("event")
     data = payload.get("data") or {}
-    reference = data.get("reference", "")
+    reference = str(data.get("reference") or "")
 
-    if event == "charge.success" and reference.startswith("SHP-TOPUP-"):
-        from app.services.wallet_services import WalletService
-        from app.services.notification_services import NotificationService
-        from app.models.notification_model import NotificationType
+    from app.services.wallet_services import WalletService
+    from app.services.notification_services import NotificationService
+    from app.models.notification_model import NotificationType
+    from app.models.wallet_transaction_model import WalletTransaction, TransactionStatus
 
-        txn = await WalletService().confirm_topup(
-            reference,
-            session,
-        )
+    # Business errors are logged but always answered with 200 so Paystack
+    # doesn't keep retrying an event we can't process; the frontend
+    # verification endpoints are the second path to settle a payment.
+    try:
+        if event == "charge.success" and reference.startswith("SHP-TOPUP-"):
+            existing = (await session.execute(
+                select(WalletTransaction).where(WalletTransaction.paystack_reference == reference)
+            )).scalar_one_or_none()
+            already_done = existing is not None and existing.status == TransactionStatus.SUCCESS
 
-        await NotificationService().notify(
-            user_id=txn.user_id,
-            type=NotificationType.PAYMENT,
-            title="Wallet topped up",
-            message=(
-                f"₦{txn.amount / 100:,.2f} "
-                "was added to your Shipora balance."
-            ),
-            session=session,
-        )
+            txn = await WalletService().confirm_topup(
+                reference,
+                session,
+            )
+
+            if not already_done:
+                await NotificationService().notify(
+                    user_id=txn.user_id,
+                    type=NotificationType.PAYMENT,
+                    title="Wallet topped up",
+                    message=(
+                        f"₦{txn.amount / 100:,.2f} "
+                        "was added to your Shipora balance."
+                    ),
+                    session=session,
+                )
+
+        elif event == "charge.success" and reference.startswith("SHP-HOLD-"):
+            txn = (await session.execute(
+                select(WalletTransaction).where(WalletTransaction.paystack_reference == reference)
+            )).scalar_one_or_none()
+            if txn and txn.shipment_id:
+                await shipment_service.confirm_payment_and_open(
+                    txn.shipment_id,
+                    session,
+                    reference,
+                )
+
+        elif event in ("transfer.success", "transfer.failed", "transfer.reversed") and reference.startswith("SHP-WITHDRAW-"):
+            txn = await WalletService().settle_withdrawal(
+                reference,
+                event == "transfer.success",
+                session,
+            )
+            if txn and event != "transfer.success":
+                await NotificationService().notify(
+                    user_id=txn.user_id,
+                    type=NotificationType.PAYMENT,
+                    title="Withdrawal failed",
+                    message=(
+                        f"Your withdrawal of ₦{txn.amount / 100:,.2f} could not be completed. "
+                        "The money is back in your Shipora balance."
+                    ),
+                    session=session,
+                )
+    except HTTPException as exc:
+        logger.warning("Paystack webhook %s %s not applied: %s", event, reference, exc.detail)
+        await session.rollback()
+    except Exception:
+        logger.exception("Paystack webhook %s %s failed", event, reference)
+        await session.rollback()
 
     return {"received": True}
 
@@ -135,6 +192,30 @@ async def list_my_deliveries(user: User = Depends(get_this_user), session: Async
     return await shipment_service.list_dispatcher_deliveries(user.uid, session)
 
 
+# ---- dispatcher's applications & vendor invitations ----------------------
+# (used by the Dispatcher Applications page)
+
+@router.get("/applications/mine", response_model=list[ApplicationResponse])
+async def list_my_applications(user: User = Depends(get_this_user), session: AsyncSession = Depends(session)):
+    return await shipment_service.list_dispatcher_applications(user.uid, session)
+
+
+@router.post("/applications/{application_id}/accept-invitation", response_model=ShipmentDetailResponse)
+async def accept_invitation(application_id: uuid.UUID, user: User = Depends(get_this_user), session: AsyncSession = Depends(session)):
+    return await shipment_service.accept_dispatcher_invitation(application_id, user.uid, session)
+
+
+@router.post("/applications/{application_id}/decline-invitation", response_model=ApplicationResponse)
+async def decline_invitation(application_id: uuid.UUID, user: User = Depends(get_this_user), session: AsyncSession = Depends(session)):
+    return await shipment_service.decline_dispatcher_invitation(application_id, user.uid, session)
+
+
+@router.get("/lookup/{tracking_number}")
+async def lookup_shipment_for_support(tracking_number: str, user: User = Depends(get_this_user), session: AsyncSession = Depends(session)):
+    """Tracking-number lookup for the vendor / dispatcher of a shipment (used to report an issue)."""
+    return await shipment_service.lookup_for_participant(tracking_number, user, session)
+
+
 @router.get("/public/{public_token}", response_model=ShipmentDetailResponse)
 async def public_checkout(public_token: str, session: AsyncSession = Depends(session)):
     return await shipment_service.get_public_checkout(public_token, session)
@@ -147,8 +228,23 @@ async def save_checkout(public_token: str, data: CheckoutDetails, session: Async
 
 @router.post("/public/{public_token}/pay")
 async def public_pay(public_token: str, email: str, session: AsyncSession = Depends(session)):
-    checkout_url = await shipment_service.initiate_public_payment(public_token, email, session, f"{settings.PUBLIC_BASE_URL}/shipment/{public_token}")
+    email = (email or "").strip()
+    if not EMAIL_RE.match(email):
+        raise HTTPException(status.HTTP_422_UNPROCESSABLE_ENTITY, "Enter a valid email address for the payment receipt.")
+    checkout_url = await shipment_service.initiate_public_payment(
+        public_token,
+        email,
+        session,
+        f"{settings.frontend_url}/payment-result?token={public_token}",
+    )
     return {"authorization_url": checkout_url}
+
+
+@router.get("/public/{public_token}/verify", response_model=ShipmentDetailResponse)
+async def public_verify_payment(public_token: str, reference: str | None = None, session: AsyncSession = Depends(session)):
+    """Called by the payment-result page after Paystack redirects back."""
+    shipment = await shipment_service.get_public_checkout(public_token, session)
+    return await shipment_service.confirm_payment_and_open(shipment.shipment_id, session, reference)
 
 
 @router.get("/tracking/{tracking_number}")

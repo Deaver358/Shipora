@@ -15,6 +15,10 @@ class TransactionType(str, Enum):
     REFUND = "refund"
     PLATFORM_COMMISSION = "platform_commission"
     WITHDRAWAL = "withdrawal"
+    # A customer paid for a vendor's shipment through Paystack checkout.
+    # Credited to the vendor so the matching ESCROW_HOLD debit nets to zero
+    # (the vendor's own Shipora balance is not charged for it).
+    CUSTOMER_PAYMENT = "customer_payment"
 
 
 class TransactionStatus(str, Enum):

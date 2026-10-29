@@ -1,5 +1,6 @@
 import time
 from typing import Any
+from urllib.parse import quote
 
 import httpx
 
@@ -161,7 +162,7 @@ class QoreIDService:
 
         try:
             body = await cls._post(
-                f"/v1/ng/identities/nin/{nin}",
+                f"/v1/ng/identities/nin/{quote(str(nin).strip(), safe='')}",
                 {
                     "firstname": first_name,
                     "lastname": surname,
@@ -333,9 +334,9 @@ class QoreIDService:
 
         try:
             body = await cls._post(
-                f"/v1/ng/identities/driver-license/{licence_number}",
+                f"/v1/ng/identities/driver-license/{quote(str(licence_number).strip(), safe='')}",
                 {
-                    "fistname": first_name,
+                    "firstname": first_name,
                     "lastname": surname,
                 },
             )
@@ -430,7 +431,7 @@ class QoreIDService:
 
         try:
             body = await cls._post(
-                f"/v1/ng/identities/license-plate-basic/{plate_number}",
+                f"/v1/ng/identities/license-plate-basic/{quote(str(plate_number).strip(), safe='')}",
                 {},
             )
 

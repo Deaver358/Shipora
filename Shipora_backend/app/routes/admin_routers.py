@@ -7,7 +7,8 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.session_config import session
-from app.core.dependencies import RoleChecker
+from app.core.dependencies import RoleChecker, get_this_user
+from app.models.dispute_model import Dispute, DisputeStatus, DisputeAction
 
 from app.models.dispatcher_model import (
     Dispatcher,
@@ -668,11 +669,13 @@ async def resolve_dispute(
     shipment_id: uuid.UUID,
     data: AdminDisputeResolution,
     _: bool = Depends(admin_required),
+    admin=Depends(get_this_user),
     db: AsyncSession = Depends(session),
 ):
     shipment = await shipment_service._get(
         shipment_id,
         db,
+        lock=True,
     )
 
     if shipment.status != ShipmentStatus.DISPUTED:
@@ -705,5 +708,25 @@ async def resolve_dispute(
         db.add(shipment)
         await db.commit()
         await db.refresh(shipment)
+
+    # Keep the disputes table in sync with this shipment-level resolution.
+    open_disputes = (await db.execute(
+        select(Dispute).where(
+            Dispute.shipment_id == shipment.shipment_id,
+            Dispute.status != DisputeStatus.RESOLVED,
+        )
+    )).scalars().all()
+
+    if open_disputes:
+        now = datetime.now(timezone.utc)
+        for dispute in open_disputes:
+            dispute.status = DisputeStatus.RESOLVED
+            dispute.resolution_action = DisputeAction(data.action)
+            dispute.resolution_note = data.note
+            dispute.resolved_by = admin.uid
+            dispute.resolved_at = now
+            dispute.updated_at = now
+            db.add(dispute)
+        await db.commit()
 
     return shipment

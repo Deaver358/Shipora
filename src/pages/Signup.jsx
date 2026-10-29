@@ -4,7 +4,7 @@ import { api } from "../interceptors/api";
 import AuthStatusModal from "../components/AuthStatusModal";
 import "../index.css";
 import logo from "../assets/shipora-logo.jpeg";
-import { supabase } from "../supabaseClient";
+import { apiUrl } from "../config";
 
 function Signup() {
   const navigate = useNavigate();
@@ -74,13 +74,11 @@ function Signup() {
     try {
       const email = formData.email.trim();
 
-      const redirectUrl = `${window.location.origin}/`;
-
       const signUpData = {
-        email: formData.email,
-        fullname: formData.fullName,
+        email,
+        fullname: formData.fullName.trim(),
         password: formData.password,
-        phone: formData.phone,
+        phone: formData.phone.trim(),
         terms_accepted: true,
         terms_version: "1.0",
       };
@@ -157,7 +155,16 @@ function Signup() {
         /already exists|already registered|email.*taken|duplicate/i.test(detail)
       ) {
         setError(
-          "An account with this email already exists. Please sign in instead."
+          /phone/i.test(detail)
+            ? "An account with this phone number already exists. Please sign in instead."
+            : "An account with this email already exists. Please sign in instead."
+        );
+      } else if (status === 422) {
+        const items = signupError?.response?.data?.detail;
+        setError(
+          Array.isArray(items)
+            ? items.map((item) => `${item?.loc?.slice(-1)[0] || "field"}: ${item?.msg}`).join(", ")
+            : "Please check your details and try again."
         );
       } else if (status === 401) {
         setError(
@@ -188,24 +195,9 @@ function Signup() {
     setGoogleLoading(true);
 
     try {
-      const { error: googleError } =
-        await supabase.auth.signInWithOAuth({
-          provider: "google",
-
-          options: {
-            redirectTo: `${window.location.origin}/home`,
-
-            queryParams: {
-              access_type: "offline",
-              prompt: "select_account",
-            },
-          },
-        });
-
-      if (googleError) {
-        throw googleError;
-      }
-
+      // The backend runs the Google OAuth flow, creates the account if
+      // needed, sets the session cookies and sends the user to /home.
+      window.location.href = apiUrl("auth/login/google?remember_me=true");
     } catch (googleError) {
       console.error(
         "Google signup error:",

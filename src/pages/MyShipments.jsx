@@ -429,7 +429,7 @@ if (
                     event.stopPropagation();
 
                     navigate(
-                      `/shipment/${shipment.public_token}`
+                      `/shipment/${shipment.shipment_id}`
                     );
                   }}
                 >

@@ -1,4 +1,4 @@
-export const setCurrendUid = (uid: string) => {
+export const setCurrendUid = (uid) => {
     sessionStorage.setItem("uid", uid);
 }
 
@@ -9,4 +9,3 @@ export const getCurrentUid = () => {
 export const clearCurrentUid = () => {
     sessionStorage.removeItem("uid");
 }
-

@@ -1,4 +1,5 @@
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, HTTPException, status
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.core.session_config import session
@@ -8,7 +9,7 @@ from app.schema.wallet_schema import WalletBalanceResponse, WalletTransactionRes
 from app.services.wallet_services import WalletService
 from app.services.notification_services import NotificationService
 from app.models.notification_model import NotificationType
-from app.models.wallet_transaction_model import TransactionStatus
+from app.models.wallet_transaction_model import TransactionStatus, WalletTransaction, TransactionType
 from app.utils.fees import kobo
 from app.utils.config import settings
 
@@ -28,9 +29,47 @@ async def topup_wallet(data: TopupRequest, user: User = Depends(get_this_user), 
         email=user.email,
         amount_kobo=kobo(data.amount),
         session=session,
-        callback_url=f"{settings.PUBLIC_BASE_URL}/wallet",
+        # Paystack appends ?trxref=...&reference=... to this URL
+        callback_url=f"{settings.frontend_url}/payment-result",
     )
     return {"authorization_url": authorization_url}
+
+
+@router.get("/topup/verify/{reference}")
+async def verify_topup(reference: str, user: User = Depends(get_this_user), session: AsyncSession = Depends(session)):
+    """
+    Confirms a top-up when the user returns from Paystack. The webhook does
+    the same thing; whichever arrives first credits the wallet (idempotent).
+    """
+    txn = (await session.execute(
+        select(WalletTransaction).where(
+            WalletTransaction.paystack_reference == reference,
+            WalletTransaction.type == TransactionType.TOPUP,
+        )
+    )).scalar_one_or_none()
+
+    if not txn or txn.user_id != user.uid:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Top-up transaction not found.")
+
+    already_done = txn.status == TransactionStatus.SUCCESS
+    txn = await wallet_service.confirm_topup(reference, session)
+
+    if not already_done:
+        await notification_service.notify(
+            user_id=user.uid,
+            type=NotificationType.PAYMENT,
+            title="Wallet topped up",
+            message=f"₦{txn.amount / 100:,.2f} was added to your Shipora balance.",
+            session=session,
+        )
+
+    balance = await wallet_service.get_balance(user.uid, session)
+    return {
+        "status": txn.status.value,
+        "reference": txn.paystack_reference,
+        "amount": _to_naira(txn.amount),
+        "available_balance": _to_naira(balance["available_balance"]),
+    }
 
 
 @router.get("/balance", response_model=WalletBalanceResponse)

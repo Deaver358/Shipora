@@ -4,8 +4,50 @@ from app.models.vendor_model import Vendor, VerificationStatus as VendorVerifica
 from app.models.dispatcher_model import Dispatcher, VerificationStatus as DispatcherVerificationStatus
 from app.models.both_roles_model import BothRoles, VerificationStatus as BothRolesVerificationStatus
 from sqlalchemy import select
+from sqlalchemy.exc import IntegrityError
 from fastapi.exceptions import HTTPException
 from fastapi import status
+from datetime import date
+
+
+def _parse_date(value):
+    """Vendor.date_of_birth is a DATE column; the form sends 'YYYY-MM-DD'."""
+    if not value or isinstance(value, date):
+        return value or None
+    try:
+        return date.fromisoformat(str(value).strip()[:10])
+    except ValueError:
+        raise HTTPException(
+            status_code=status.HTTP_422_UNPROCESSABLE_ENTITY,
+            detail="Date of birth must be a valid date (YYYY-MM-DD).",
+        )
+
+
+async def _commit_profile(session: AsyncSession, row):
+    """Commit a new KYC profile, turning unique-constraint races into a clear 409."""
+    session.add(row)
+    try:
+        await session.commit()
+    except IntegrityError as exc:
+        await session.rollback()
+        message = str(getattr(exc, "orig", exc)).lower()
+        if "phone" in message:
+            detail = "This phone number is already registered."
+        elif "email" in message:
+            detail = "This email is already registered."
+        elif "nin" in message:
+            detail = "This NIN is already registered."
+        elif "cac" in message:
+            detail = "This CAC number is already registered."
+        elif "vehicle_registration" in message:
+            detail = "This vehicle registration is already registered."
+        elif "licence" in message:
+            detail = "This driver's licence is already registered."
+        else:
+            detail = "These details are already registered to another account."
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=detail)
+    await session.refresh(row)
+    return row
 
 
 class RoleService:
@@ -30,8 +72,10 @@ class RoleService:
         return result.scalar_one_or_none()
 
     async def vendor_withcac_exists(self, cac: str, vendor: bool, session: AsyncSession):
-        model = Vendor if vendor else Dispatcher
-        result = await session.execute(select(model).where(model.cac_number == cac))
+        # Dispatchers don't have a CAC number
+        if not vendor or not cac:
+            return None
+        result = await session.execute(select(Vendor).where(Vendor.cac_number == cac))
         return result.scalar_one_or_none()
 
     async def both_withemail_exists(self, email: str, session: AsyncSession):
@@ -517,6 +561,7 @@ class RoleService:
             cac_status = VendorVerificationStatus(cac_result)
 
         vendor_data = data.model_dump()
+        vendor_data["date_of_birth"] = _parse_date(vendor_data.get("date_of_birth"))
 
         vendor = Vendor(
             **vendor_data,
@@ -527,12 +572,7 @@ class RoleService:
             cac_verification_ref=cac_ref,
         )
 
-        session.add(vendor)
-
-        await session.commit()
-        await session.refresh(vendor)
-
-        return vendor
+        return await _commit_profile(session, vendor)
 
     # ============================================================
     # DISPATCHER
@@ -606,13 +646,13 @@ class RoleService:
     data.vehicle_registration
      )
 
-        vehicle_status = BothRolesVerificationStatus(vehicle_result)
+        vehicle_status = DispatcherVerificationStatus(vehicle_result)
 
         # ---------------- DRIVER LICENCE ----------------
 
         licence_status = None
 
-        if data.is_driver:
+        if data.is_driver == "yes":
 
             if not data.licence_number:
                 raise HTTPException(
@@ -642,6 +682,11 @@ class RoleService:
             licence_status = licence_result
 
         dispatcher_data = data.model_dump()
+        dispatcher_data["service_area"] = (
+            dispatcher_data.get("service_area") or data.operating_city
+        )
+        if data.is_driver != "yes":
+            dispatcher_data["licence_number"] = None
 
         dispatcher = Dispatcher(
             **dispatcher_data,
@@ -651,12 +696,7 @@ class RoleService:
             vehicle_verification_status=vehicle_status,
         )
 
-        session.add(dispatcher)
-
-        await session.commit()
-        await session.refresh(dispatcher)
-
-        return dispatcher
+        return await _commit_profile(session, dispatcher)
 
     # ============================================================
     # BOTH ROLES
@@ -837,6 +877,11 @@ class RoleService:
         # ---------------- CREATE PROFILE ----------------
 
         both_data = data.model_dump()
+        # is_driver / date_of_birth are VARCHAR columns on both_roles
+        both_data["is_driver"] = "yes" if data.is_driver else "no"
+        both_data["service_area"] = both_data.get("service_area") or data.operating_city
+        if not data.is_driver:
+            both_data["licence_number"] = None
 
         bothroles = BothRoles(
             **both_data,
@@ -848,9 +893,4 @@ class RoleService:
             vehicle_verification_status=vehicle_status,
         )
 
-        session.add(bothroles)
-
-        await session.commit()
-        await session.refresh(bothroles)
-
-        return bothroles
+        return await _commit_profile(session, bothroles)

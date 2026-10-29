@@ -1,7 +1,8 @@
+import logging
 import uuid
 from datetime import datetime, timedelta, timezone
 
-from sqlalchemy import select
+from sqlalchemy import select, text
 from sqlalchemy.ext.asyncio import AsyncSession
 from fastapi import HTTPException, status
 
@@ -23,6 +24,7 @@ from app.utils.fees import (
 profile_service = ProfileService()
 wallet_service = WalletService()
 notification_service = NotificationService()
+logger = logging.getLogger("shipora.shipments")
 
 
 class ShipmentService:
@@ -83,6 +85,7 @@ class ShipmentService:
         shipment = await self._get(
             shipment_id,
             session,
+            lock=True,
         )
 
         if shipment.vendor_id != payer_user_id:
@@ -159,18 +162,31 @@ class ShipmentService:
         self,
         shipment_id,
         session,
+        reference=None,
     ):
         shipment = await self._get(
             shipment_id,
             session,
+            lock=True,
         )
 
         if shipment.payment_status == PaymentStatus.HELD:
+            # commit (not rollback) releases the row lock without expiring
+            # the loaded object we are about to return
+            await session.commit()
             return shipment
+
+        if shipment.status != ShipmentStatus.PENDING_PAYMENT:
+            await session.rollback()
+            raise HTTPException(
+                status.HTTP_400_BAD_REQUEST,
+                "This shipment is no longer awaiting payment.",
+            )
 
         confirmed = await wallet_service.confirm_hold(
             shipment,
             session,
+            reference,
         )
 
         if not confirmed:
@@ -253,6 +269,9 @@ class ShipmentService:
             shipment.vendor_id != viewer_user_id
             and shipment.dispatcher_id != viewer_user_id
         ):
+            # Detach first so hiding recipient details can never be
+            # flushed back to the database.
+            session.expunge(shipment)
             shipment.recipient_name = None
             shipment.recipient_phone = None
             shipment.recipient_address = None
@@ -283,6 +302,7 @@ class ShipmentService:
         shipment = await self._get_by_token(
             public_token,
             session,
+            lock=True,
         )
 
         if shipment.status in (
@@ -529,6 +549,7 @@ class ShipmentService:
             application.shipment_id,
             vendor_user_id,
             session,
+            lock=True,
         )
 
         if shipment.status != ShipmentStatus.OPEN:
@@ -536,6 +557,8 @@ class ShipmentService:
                 status.HTTP_400_BAD_REQUEST,
                 "This shipment is no longer open.",
             )
+
+        await session.refresh(application)
 
         if application.status != ApplicationStatus.PENDING:
             raise HTTPException(
@@ -640,6 +663,7 @@ class ShipmentService:
         shipment = await self._get(
             application.shipment_id,
             session,
+            lock=True,
         )
 
         if shipment.status != ShipmentStatus.OPEN:
@@ -796,6 +820,7 @@ class ShipmentService:
             shipment_id,
             dispatcher_user_id,
             session,
+            lock=True,
         )
 
         if shipment.status != ShipmentStatus.ASSIGNED:
@@ -835,6 +860,7 @@ class ShipmentService:
             shipment_id,
             dispatcher_user_id,
             session,
+            lock=True,
         )
 
         if shipment.status != ShipmentStatus.PICKED_UP:
@@ -874,6 +900,7 @@ class ShipmentService:
             shipment_id,
             dispatcher_user_id,
             session,
+            lock=True,
         )
 
         if shipment.status not in (
@@ -915,6 +942,7 @@ class ShipmentService:
             shipment_id,
             dispatcher_user_id,
             session,
+            lock=True,
         )
 
         if shipment.status != ShipmentStatus.OUT_FOR_DELIVERY:
@@ -962,12 +990,14 @@ class ShipmentService:
             shipment_id,
             dispatcher_user_id,
             session,
+            lock=True,
         )
 
         if shipment.status not in (
             ShipmentStatus.ASSIGNED,
             ShipmentStatus.PICKED_UP,
             ShipmentStatus.IN_TRANSIT,
+            ShipmentStatus.OUT_FOR_DELIVERY,
         ):
             raise HTTPException(
                 status.HTTP_400_BAD_REQUEST,
@@ -993,6 +1023,8 @@ class ShipmentService:
         tracking_number,
         session,
     ):
+        tracking_number = (tracking_number or "").strip().upper()
+
         result = await session.execute(
             select(Shipment).where(
                 Shipment.tracking_number == tracking_number
@@ -1017,6 +1049,82 @@ class ShipmentService:
             "destination": shipment.destination,
         }
 
+    async def lookup_for_participant(
+        self,
+        tracking_number,
+        user,
+        session,
+    ):
+        """
+        Tracking-number lookup for the vendor or dispatcher of a shipment
+        (and admins). Returns enough to raise a dispute about it.
+        """
+        from app.models.dispute_model import Dispute, DisputeStatus
+
+        tracking_number = (tracking_number or "").strip().upper()
+
+        result = await session.execute(
+            select(Shipment).where(Shipment.tracking_number == tracking_number)
+        )
+        shipment = result.scalar_one_or_none()
+
+        is_admin = getattr(user.role, "value", user.role) == "admin"
+
+        if not shipment or (
+            not is_admin
+            and user.uid not in (shipment.vendor_id, shipment.dispatcher_id)
+        ):
+            raise HTTPException(
+                status.HTTP_404_NOT_FOUND,
+                "We couldn't find a shipment with that tracking number on your account.",
+            )
+
+        async def _party(user_id):
+            if not user_id:
+                return None, None
+            from app.models.user_model import User
+
+            row = (await session.execute(select(User).where(User.uid == user_id))).scalar_one_or_none()
+            return (row.fullname, row.phone) if row else (None, None)
+
+        vendor_name, vendor_phone = await _party(shipment.vendor_id)
+        dispatcher_name, dispatcher_phone = await _party(shipment.dispatcher_id)
+
+        active = (await session.execute(
+            select(Dispute)
+            .where(
+                Dispute.shipment_id == shipment.shipment_id,
+                Dispute.status.in_([
+                    DisputeStatus.OPEN,
+                    DisputeStatus.UNDER_REVIEW,
+                    DisputeStatus.IN_CONSIDERATION,
+                ]),
+            )
+            .order_by(Dispute.created_at.desc())
+        )).scalars().first()
+
+        return {
+            "shipment_id": shipment.shipment_id,
+            "tracking_number": shipment.tracking_number,
+            "item_name": shipment.item_name,
+            "description": shipment.description,
+            "status": shipment.status.value,
+            "payment_status": shipment.payment_status.value,
+            "pickup": shipment.pickup,
+            "destination": shipment.destination,
+            "vendor_name": vendor_name,
+            "vendor_phone": vendor_phone,
+            "dispatcher_name": dispatcher_name,
+            "dispatcher_phone": dispatcher_phone,
+            "dispute_id": active.dispute_id if active else None,
+            "dispute_status": active.status.value if active else None,
+            "can_dispute": shipment.status not in (
+                ShipmentStatus.CANCELLED,
+                ShipmentStatus.COMPLETED,
+                ShipmentStatus.PENDING_PAYMENT,
+            ) and active is None,
+        }
+
     # ============================================================
     # DELIVERY CONFIRMATION / DISPUTES
     # ============================================================
@@ -1031,6 +1139,7 @@ class ShipmentService:
             shipment_id,
             vendor_user_id,
             session,
+            lock=True,
         )
 
         if shipment.status != ShipmentStatus.DELIVERED:
@@ -1055,6 +1164,7 @@ class ShipmentService:
             shipment_id,
             vendor_user_id,
             session,
+            lock=True,
         )
 
         if shipment.status != ShipmentStatus.DELIVERED:
@@ -1065,8 +1175,27 @@ class ShipmentService:
 
         shipment.status = ShipmentStatus.DISPUTED
         shipment.dispute_reason = reason
+        shipment.dispute_resolution = None
+        shipment.dispute_resolved_at = None
         shipment.auto_release_at = None
         shipment.updated_at = datetime.now(timezone.utc)
+
+        # Record it in the disputes table too, so it shows up on the admin
+        # dispute dashboard and can be resolved from there.
+        from app.models.dispute_model import Dispute, DisputeStatus
+
+        session.add(
+            Dispute(
+                shipment_id=shipment.shipment_id,
+                complainant_user_id=vendor_user_id,
+                vendor_id=shipment.vendor_id,
+                dispatcher_id=shipment.dispatcher_id,
+                reason=reason[:255],
+                description=reason,
+                evidence=[],
+                status=DisputeStatus.OPEN,
+            )
+        )
 
         shipment = await self._save(
             shipment,
@@ -1095,7 +1224,7 @@ class ShipmentService:
         now = datetime.now(timezone.utc)
 
         result = await session.execute(
-            select(Shipment).where(
+            select(Shipment.shipment_id).where(
                 Shipment.status == ShipmentStatus.DELIVERED,
                 Shipment.auto_release_at.is_not(None),
                 Shipment.auto_release_at <= now,
@@ -1103,17 +1232,36 @@ class ShipmentService:
             )
         )
 
-        due = result.scalars().all()
+        due_ids = list(result.scalars().all())
+        await session.commit()
         count = 0
 
-        for shipment in due:
+        for shipment_id in due_ids:
             try:
+                # Lock the row and re-check: another worker / the vendor may
+                # have confirmed or disputed it in the meantime.
+                locked = await session.execute(
+                    select(Shipment)
+                    .where(Shipment.shipment_id == shipment_id)
+                    .with_for_update(skip_locked=True)
+                )
+                shipment = locked.scalar_one_or_none()
+
+                if (
+                    not shipment
+                    or shipment.status != ShipmentStatus.DELIVERED
+                    or shipment.payment_status != PaymentStatus.HELD
+                ):
+                    await session.rollback()
+                    continue
+
                 await self._complete_and_release(
                     shipment,
                     session,
                 )
                 count += 1
             except Exception:
+                logger.exception("Auto-release failed for shipment %s", shipment_id)
                 await session.rollback()
 
         return count
@@ -1222,6 +1370,7 @@ class ShipmentService:
             shipment_id,
             vendor_user_id,
             session,
+            lock=True,
         )
 
         if shipment.status in (
@@ -1357,12 +1506,19 @@ class ShipmentService:
         self,
         shipment_id,
         session,
+        lock=False,
     ):
-        result = await session.execute(
-            select(Shipment).where(
-                Shipment.shipment_id == shipment_id
-            )
+        query = select(Shipment).where(
+            Shipment.shipment_id == shipment_id
         )
+
+        if lock:
+            # Row lock until commit: prevents double-accept, double-release
+            # and other races when two requests touch the same shipment.
+            # populate_existing makes sure we re-read the row after locking.
+            query = query.with_for_update().execution_options(populate_existing=True)
+
+        result = await session.execute(query)
 
         shipment = result.scalar_one_or_none()
 
@@ -1378,12 +1534,16 @@ class ShipmentService:
         self,
         token,
         session,
+        lock=False,
     ):
-        result = await session.execute(
-            select(Shipment).where(
-                Shipment.public_token == token
-            )
+        query = select(Shipment).where(
+            Shipment.public_token == token
         )
+
+        if lock:
+            query = query.with_for_update().execution_options(populate_existing=True)
+
+        result = await session.execute(query)
 
         shipment = result.scalar_one_or_none()
 
@@ -1400,10 +1560,12 @@ class ShipmentService:
         shipment_id,
         user_id,
         session,
+        lock=False,
     ):
         shipment = await self._get(
             shipment_id,
             session,
+            lock=lock,
         )
 
         if shipment.vendor_id != user_id:
@@ -1419,10 +1581,12 @@ class ShipmentService:
         shipment_id,
         user_id,
         session,
+        lock=False,
     ):
         shipment = await self._get(
             shipment_id,
             session,
+            lock=lock,
         )
 
         if shipment.dispatcher_id != user_id:

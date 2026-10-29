@@ -2,13 +2,12 @@ import { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import shiporaLogo from "../assets/shipora-logo.jpeg";
 import "../index.css";
+import { API_BASE_URL as CONFIG_API_BASE_URL } from "../config";
 
 function AdminLogin() {
   const navigate = useNavigate();
 
-  const API_URL =
-    import.meta.env.VITE_API_URL ||
-    "http://localhost:8000/api/v1.0";
+  const API_URL = CONFIG_API_BASE_URL;
 
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");

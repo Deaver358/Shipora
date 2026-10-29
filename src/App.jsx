@@ -1,4 +1,4 @@
-import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { BrowserRouter, Routes, Route, Navigate, useParams } from "react-router-dom";
 
 import Index from "./pages/Index";
 import Home from "./pages/Home";
@@ -55,6 +55,24 @@ import Dispute from "./pages/Dispute";
 import "./index.css";
 import ChangePassword from "./pages/ChangePassword";
 
+const UUID_PATTERN =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+/*
+ * /shipment/:shipmentId is used two ways:
+ *  - with a shipment UUID (vendor's "My Shipments") -> shipment details
+ *  - with a public checkout token (customer email / payment links) -> checkout
+ */
+function ShipmentRoute() {
+  const { shipmentId } = useParams();
+
+  return UUID_PATTERN.test(shipmentId || "") ? (
+    <ShipmentDetails />
+  ) : (
+    <Checkout />
+  );
+}
+
 function App() {
   return (
     <BrowserRouter>
@@ -70,6 +88,7 @@ function App() {
 <Route path="/admin-login" element={<AdminLogin />} />
 
 <Route path="/checkout/:token" element={<Checkout />} />
+<Route path="/shipment/:shipmentId" element={<ShipmentRoute />} />
 <Route path="/payment-result" element={<PaymentResult />} />
 
 <Route path="/top-up" element={<TopUp />} />
@@ -224,6 +243,11 @@ function App() {
         />
 
         <Route
+          path="/my-shipments"
+          element={<MyShipments />}
+        />
+
+        <Route
           path="/CreateShipment"
           element={<CreateShipment />}
         />
@@ -271,6 +295,12 @@ function App() {
           path="/admin/create-shipment"
           element={<CreateShipment />}
         />
+
+        {/* Older payment callback URL */}
+        <Route path="/wallet" element={<Navigate to="/dashboard" replace />} />
+
+        {/* Unknown URLs go back to the landing page */}
+        <Route path="*" element={<Navigate to="/" replace />} />
 
       </Routes>
     </BrowserRouter>

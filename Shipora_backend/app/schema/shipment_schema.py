@@ -1,20 +1,30 @@
 import uuid
 from datetime import datetime
 from typing import List, Optional
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, ConfigDict, Field, field_validator
 from app.models.shipment_model import ShipmentStatus, PaymentStatus
+
+MAX_MEDIA_ITEM_CHARS = 3_000_000  # ~2 MB image as a data URL
 
 
 class ShipmentCreate(BaseModel):
-    item_name: str
+    item_name: str = Field(min_length=1, max_length=200)
     description: Optional[str] = None
-    media: Optional[List[str]] = None
-    pickup: str
-    destination: str
+    media: Optional[List[str]] = Field(default=None, max_length=5)
+    pickup: str = Field(min_length=1)
+    destination: str = Field(min_length=1)
     recipient_name: Optional[str] = None
     recipient_phone: Optional[str] = None
-    payment_by: str = "vendor"
-    delivery_amount: float = Field(gt=0)
+    payment_by: str = Field(default="vendor", pattern="^(vendor|customer)$")
+    delivery_amount: float = Field(gt=0, le=100_000_000)
+
+    @field_validator("media")
+    @classmethod
+    def _media_size(cls, value):
+        for item in value or []:
+            if len(item) > MAX_MEDIA_ITEM_CHARS:
+                raise ValueError("Each media file must be under 2 MB (upload large files first).")
+        return value
     vehicle_preference: Optional[str] = None
     note: Optional[str] = None
 
